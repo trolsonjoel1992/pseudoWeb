@@ -19,17 +19,36 @@ pseudoWeb/
 - Node.js v18+
 - pnpm
 
+Recomendado:
+- Usar la versión de Node indicada en `.nvmrc`.
+
 ### Instalación
 
 ```bash
+# (Opcional) cargar versión de Node recomendada
+nvm use
+
 # Instalar dependencias
-pnpm install
+pnpm setup
 
 # Desarrollo
 pnpm dev
 
 # Build
 pnpm build
+
+# Verificación de tipos
+pnpm typecheck
+```
+
+## Recuperación rápida local
+
+Si eliminaste `node_modules` o cambiaste dependencias:
+
+```bash
+pnpm clean:deps
+pnpm setup
+pnpm dev
 ```
 
 ## 📦 Packages
