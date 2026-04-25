@@ -13,7 +13,8 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "pseudocode",
