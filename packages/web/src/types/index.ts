@@ -11,6 +11,7 @@ export interface ExecutionResult {
 export interface ExecutionError {
   message: string
   line?: number
+  column?: number
   type: string
 }
 

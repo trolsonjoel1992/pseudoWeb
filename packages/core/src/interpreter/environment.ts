@@ -59,4 +59,26 @@ export class Environment {
 
         throw new RuntimeError(`Variable no definida '${name}'.`);
     }
+
+    has(name: string): boolean {
+        if (this.values.has(name)) {
+            return true;
+        }
+
+        if (this.enclosing !== null) {
+            return this.enclosing.has(name);
+        }
+
+        return false;
+    }
+
+    snapshot(): Record<string, unknown> {
+        const merged: Record<string, unknown> = this.enclosing ? this.enclosing.snapshot() : {};
+
+        for (const [name, value] of this.values.entries()) {
+            merged[name] = value;
+        }
+
+        return merged;
+    }
 }

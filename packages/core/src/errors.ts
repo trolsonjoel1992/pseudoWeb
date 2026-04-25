@@ -4,19 +4,24 @@ export class PseudocodeError extends Error {
     public line?: number,
     public column?: number,
   ) {
-    super(message)
-    this.name = 'PseudocodeError'
+    super(message);
+    this.name = 'PseudocodeError';
   }
 }
 
 export class LexerError extends PseudocodeError {
-  name = 'LexerError'
+  name = 'LexerError';
 }
 
 export class ParserError extends PseudocodeError {
-  name = 'ParserError'
+  name = 'ParserError';
 }
 
 export class InterpreterError extends PseudocodeError {
-  name = 'InterpreterError'
+  name = 'InterpreterError';
+}
+
+// Agregamos RuntimeError para usarlo en Environment y Evaluator
+export class RuntimeError extends PseudocodeError {
+  name = 'RuntimeError';
 }

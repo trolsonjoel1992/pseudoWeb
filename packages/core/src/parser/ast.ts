@@ -1,29 +1,106 @@
 export namespace Ast {
-  // Nodo base para el AST
   export interface Node {
     type: string;
+    line?: number;
+    column?: number;
   }
 
-  // Nodo para declaraciones de variables
+  export interface ProgramNode extends Node {
+    type: 'Program';
+    statements: StatementNode[];
+  }
+
   export interface VariableDeclarationNode extends Node {
-    type: "VariableDeclaration";
+    type: 'VariableDeclaration';
     variables: string[]; // Lista de nombres de variables
-    dataType: string; // Tipo de dato (ej. Entero, Real)
+    dataType: string;
   }
 
-  // Nodo para asignaciones
   export interface AssignmentNode extends Node {
-    type: "Assignment";
+    type: 'Assignment';
     variable: string;
     value: ExpressionNode;
   }
 
-  // Nodo para expresiones
-  export interface ExpressionNode extends Node {
-    type: "Expression";
-    value: any; // Puede ser un literal, operación, etc.
+  export interface WriteNode extends Node {
+    type: 'Write';
+    values: ExpressionNode[];
   }
 
-  // Unión de nodos posibles
-  export type StatementNode = VariableDeclarationNode | AssignmentNode;
+  export interface ReadNode extends Node {
+    type: 'Read';
+    variables: string[];
+  }
+
+  export interface IfNode extends Node {
+    type: 'If';
+    condition: ExpressionNode;
+    thenBranch: StatementNode[];
+    elseBranch: StatementNode[];
+  }
+
+  export interface WhileNode extends Node {
+    type: 'While';
+    condition: ExpressionNode;
+    body: StatementNode[];
+  }
+
+  export interface ForNode extends Node {
+    type: 'For';
+    variable: string;
+    start: ExpressionNode;
+    end: ExpressionNode;
+    body: StatementNode[];
+    step?: ExpressionNode;
+  }
+
+  export interface ExpressionStatementNode extends Node {
+    type: 'ExpressionStatement';
+    expression: ExpressionNode;
+  }
+
+  export interface LiteralNode extends Node {
+    type: 'Literal';
+    value: string | number | boolean | null;
+  }
+
+  export interface IdentifierNode extends Node {
+    type: 'Identifier';
+    name: string;
+  }
+
+  export interface BinaryExpressionNode extends Node {
+    type: 'BinaryExpression';
+    operator: string;
+    left: ExpressionNode;
+    right: ExpressionNode;
+  }
+
+  export interface UnaryExpressionNode extends Node {
+    type: 'UnaryExpression';
+    operator: string;
+    right: ExpressionNode;
+  }
+
+  export interface GroupingNode extends Node {
+    type: 'Grouping';
+    expression: ExpressionNode;
+  }
+
+  export type ExpressionNode =
+    | LiteralNode
+    | IdentifierNode
+    | BinaryExpressionNode
+    | UnaryExpressionNode
+    | GroupingNode;
+
+  export type StatementNode =
+    | VariableDeclarationNode
+    | AssignmentNode
+    | WriteNode
+    | ReadNode
+    | IfNode
+    | WhileNode
+    | ForNode
+    | ExpressionStatementNode;
 }
