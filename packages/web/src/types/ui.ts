@@ -1,4 +1,4 @@
-export type DashboardMenu = 'codigo' | 'paso' | 'errores' | 'config' | 'soporte' | 'nuevoScript'
+export type DashboardMenu = 'codigo' | 'consola' | 'errores' | 'nuevoScript'
 
 export type VariableType = 'STRING' | 'INT' | 'FLOAT' | 'BOOL' | 'ARRAY' | 'UNKNOWN'
 

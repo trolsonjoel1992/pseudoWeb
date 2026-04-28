@@ -6,11 +6,19 @@ type SideNavBarProps = {
   activeMenu: DashboardMenu
   isMobileOpen: boolean
   onMenuChange: (menu: Exclude<DashboardMenu, 'nuevoScript'>) => void
+  onClearConsole: () => void
   onNewScript: () => void
   onCloseMobile: () => void
 }
 
-export function SideNavBar({ activeMenu, isMobileOpen, onMenuChange, onNewScript, onCloseMobile }: SideNavBarProps) {
+export function SideNavBar({
+  activeMenu,
+  isMobileOpen,
+  onMenuChange,
+  onClearConsole,
+  onNewScript,
+  onCloseMobile,
+}: SideNavBarProps) {
   return (
     <>
       <div
@@ -20,17 +28,13 @@ export function SideNavBar({ activeMenu, isMobileOpen, onMenuChange, onNewScript
       />
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[290px] flex-col gap-6 border-r border-slate-200/70 bg-slate-50/90 p-4 backdrop-blur transition md:static md:z-10 md:h-[calc(100vh-120px)] md:translate-x-0 md:rounded-2xl ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[290px] flex-col gap-6 border-r border-slate-200/70 bg-slate-50/90 p-4 backdrop-blur transition md:static md:z-10 md:h-full md:w-full md:translate-x-0 md:rounded-2xl ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex items-center justify-between md:justify-start">
           <div className="flex items-center gap-3">
-            <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">&gt;_</div>
-            <div>
-              <h2 className="text-sm font-bold text-blue-700">Panel de control</h2>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">v1.0.4 · ES</p>
-            </div>
+            <h2 className="text-sm font-bold text-blue-700">Ejecutar</h2>
           </div>
           <button
             type="button"
@@ -54,16 +58,21 @@ export function SideNavBar({ activeMenu, isMobileOpen, onMenuChange, onNewScript
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={onNewScript}
-          className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(37,99,235,0.25)] transition hover:bg-blue-700"
-        >
-          Nuevo script
-        </button>
-
-        <div className="mt-auto border-t border-slate-200/70 pt-4">
-          <MenuItem icon={'??'} label="Soporte" isActive={activeMenu === 'soporte'} onClick={() => onMenuChange('soporte')} />
+        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-2">
+          <button
+            type="button"
+            onClick={onClearConsole}
+            className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+          >
+            Limpiar consola
+          </button>
+          <button
+            type="button"
+            onClick={onNewScript}
+            className="w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
+          >
+            Nuevo script
+          </button>
         </div>
       </aside>
     </>
