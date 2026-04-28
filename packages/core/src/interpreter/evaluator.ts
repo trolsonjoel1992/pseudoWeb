@@ -1,6 +1,9 @@
 import type { Ast } from '../parser/ast';
 import { RuntimeError } from '../errors';
 import { Environment } from './environment';
+import { evaluateExpressionNode } from './evaluators/expressionEvaluator';
+import { evaluateIfNode, evaluateWhileNode, evaluateForNode } from './evaluators/controlFlowEvaluator';
+import { evaluateWriteNode, evaluateReadNode } from './evaluators/ioEvaluator';
 
 export interface EvaluationResult {
     output: string[];
@@ -76,73 +79,55 @@ export class Evaluator {
     }
 
     private evaluateWrite(node: Ast.WriteNode): void {
-        const rendered = node.values.map((expression) => this.stringify(this.evaluateExpression(expression)));
-        this.output.push(rendered.join(' '));
+        evaluateWriteNode(node, {
+            evaluateExpression: this.evaluateExpression.bind(this),
+            inputValues: this.inputValues,
+            hasVariable: this.environment.has.bind(this.environment),
+            assignVariable: this.environment.assign.bind(this.environment),
+            defineVariable: this.environment.define.bind(this.environment),
+            pushOutput: (line) => this.output.push(line),
+        });
     }
 
     private evaluateRead(node: Ast.ReadNode): void {
-        for (const variable of node.variables) {
-            const nextValue = this.inputValues.length > 0 ? this.inputValues.shift() ?? null : null;
-
-            if (this.environment.has(variable)) {
-                this.environment.assign(variable, nextValue);
-            } else {
-                this.environment.define(variable, nextValue);
-            }
-        }
+        evaluateReadNode(node, {
+            evaluateExpression: this.evaluateExpression.bind(this),
+            inputValues: this.inputValues,
+            hasVariable: this.environment.has.bind(this.environment),
+            assignVariable: this.environment.assign.bind(this.environment),
+            defineVariable: this.environment.define.bind(this.environment),
+            pushOutput: (line) => this.output.push(line),
+        });
     }
 
     private evaluateIf(node: Ast.IfNode): void {
-        if (this.isTruthy(this.evaluateExpression(node.condition))) {
-            this.evaluateBlock(node.thenBranch);
-            return;
-        }
-
-        this.evaluateBlock(node.elseBranch);
+        evaluateIfNode(node, {
+            evaluateExpression: this.evaluateExpression.bind(this),
+            evaluateBlock: this.evaluateBlock.bind(this),
+            hasVariable: this.environment.has.bind(this.environment),
+            assignVariable: this.environment.assign.bind(this.environment),
+            defineVariable: this.environment.define.bind(this.environment),
+        });
     }
 
     private evaluateWhile(node: Ast.WhileNode): void {
-        let guard = 0;
-        while (this.isTruthy(this.evaluateExpression(node.condition))) {
-            this.evaluateBlock(node.body);
-            guard += 1;
-
-            if (guard > 10000) {
-                throw new RuntimeError('Bucle Mientras excedió el límite de seguridad.');
-            }
-        }
+        evaluateWhileNode(node, {
+            evaluateExpression: this.evaluateExpression.bind(this),
+            evaluateBlock: this.evaluateBlock.bind(this),
+            hasVariable: this.environment.has.bind(this.environment),
+            assignVariable: this.environment.assign.bind(this.environment),
+            defineVariable: this.environment.define.bind(this.environment),
+        });
     }
 
     private evaluateFor(node: Ast.ForNode): void {
-        const start = this.toNumber(this.evaluateExpression(node.start));
-        const end = this.toNumber(this.evaluateExpression(node.end));
-        const step = node.step ? this.toNumber(this.evaluateExpression(node.step)) : start <= end ? 1 : -1;
-
-        if (step === 0) {
-            throw new RuntimeError('El paso del Para no puede ser cero.');
-        }
-
-        if (step > 0) {
-            for (let value = start; value <= end; value += step) {
-                this.bindLoopVariable(node.variable, value);
-                this.evaluateBlock(node.body);
-            }
-            return;
-        }
-
-        for (let value = start; value >= end; value += step) {
-            this.bindLoopVariable(node.variable, value);
-            this.evaluateBlock(node.body);
-        }
-    }
-
-    private bindLoopVariable(name: string, value: number): void {
-        if (this.environment.has(name)) {
-            this.environment.assign(name, value);
-            return;
-        }
-
-        this.environment.define(name, value);
+        evaluateForNode(node, {
+            evaluateExpression: this.evaluateExpression.bind(this),
+            evaluateBlock: this.evaluateBlock.bind(this),
+            hasVariable: this.environment.has.bind(this.environment),
+            assignVariable: this.environment.assign.bind(this.environment),
+            defineVariable: this.environment.define.bind(this.environment),
+        });
     }
 
     private evaluateBlock(statements: Ast.StatementNode[]): void {
@@ -152,107 +137,9 @@ export class Evaluator {
     }
 
     private evaluateExpression(node: Ast.ExpressionNode): any {
-        switch (node.type) {
-            case 'Literal':
-                return node.value;
-            case 'Identifier':
-                return this.environment.lookup(node.name);
-            case 'Grouping':
-                return this.evaluateExpression(node.expression);
-            case 'UnaryExpression':
-                return this.evaluateUnary(node);
-            case 'BinaryExpression':
-                return this.evaluateBinary(node);
-            default:
-                throw new RuntimeError(`Expresión desconocida: ${(node as { type: string }).type}`);
-        }
-    }
-
-    private evaluateUnary(node: Ast.UnaryExpressionNode): any {
-        const right = this.evaluateExpression(node.right);
-
-        switch (node.operator) {
-            case 'Resta':
-                return -this.toNumber(right);
-            case 'No':
-                return !this.isTruthy(right);
-            default:
-                throw new RuntimeError(`Operador unario no soportado: ${node.operator}`);
-        }
-    }
-
-    private evaluateBinary(node: Ast.BinaryExpressionNode): any {
-        const left = this.evaluateExpression(node.left);
-        const right = this.evaluateExpression(node.right);
-
-        switch (node.operator) {
-            case 'Suma':
-                return typeof left === 'string' || typeof right === 'string' ? `${left}${right}` : this.toNumber(left) + this.toNumber(right);
-            case 'Resta':
-                return this.toNumber(left) - this.toNumber(right);
-            case 'Multiplicacion':
-                return this.toNumber(left) * this.toNumber(right);
-            case 'Division':
-                if (this.toNumber(right) === 0) {
-                    throw new RuntimeError('División por cero.');
-                }
-                return this.toNumber(left) / this.toNumber(right);
-            case 'Div':
-                if (this.toNumber(right) === 0) {
-                    throw new RuntimeError('División entera por cero.');
-                }
-                return Math.trunc(this.toNumber(left) / this.toNumber(right));
-            case 'Mod':
-                if (this.toNumber(right) === 0) {
-                    throw new RuntimeError('Módulo por cero.');
-                }
-                return this.toNumber(left) % this.toNumber(right);
-            case 'Potencia':
-                return this.toNumber(left) ** this.toNumber(right);
-            case 'Igual':
-                return left === right;
-            case 'Distinto':
-                return left !== right;
-            case 'Menor':
-                return this.toComparable(left) < this.toComparable(right);
-            case 'MenorIgual':
-                return this.toComparable(left) <= this.toComparable(right);
-            case 'Mayor':
-                return this.toComparable(left) > this.toComparable(right);
-            case 'MayorIgual':
-                return this.toComparable(left) >= this.toComparable(right);
-            case 'Y':
-                return this.isTruthy(left) && this.isTruthy(right);
-            case 'O':
-                return this.isTruthy(left) || this.isTruthy(right);
-            default:
-                throw new RuntimeError(`Operador binario no soportado: ${node.operator}`);
-        }
-    }
-
-    private stringify(value: unknown): string {
-        if (value === null || value === undefined) {
-            return '';
-        }
-
-        return String(value);
-    }
-
-    private isTruthy(value: unknown): boolean {
-        return Boolean(value);
-    }
-
-    private toNumber(value: unknown): number {
-        const numericValue = typeof value === 'number' ? value : Number(value);
-
-        if (Number.isNaN(numericValue)) {
-            throw new RuntimeError(`No se puede convertir a número: ${String(value)}`);
-        }
-
-        return numericValue;
-    }
-
-    private toComparable(value: unknown): string | number {
-        return typeof value === 'number' ? value : String(value);
+        return evaluateExpressionNode(node, {
+            evaluateExpression: this.evaluateExpression.bind(this),
+            lookup: this.environment.lookup.bind(this.environment),
+        });
     }
 }
