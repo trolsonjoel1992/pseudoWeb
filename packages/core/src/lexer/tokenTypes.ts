@@ -12,6 +12,7 @@ export enum TokenType {
   Para = "Para",
   FinPara = "FinPara",
   Repetir = "Repetir",
+  Hasta = "Hasta",
   HastaQue = "HastaQue",
   Segun = "Segun",
   Hacer = "Hacer",

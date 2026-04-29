@@ -60,4 +60,19 @@ FinSi`
     expect(assignment.value.operator).toBe('Potencia')
     expect(assignment.value.right.type).toBe('BinaryExpression')
   })
+
+  it('parsea Para con Hasta y paso negativo', () => {
+    const source = `Para contador := 100 Hasta 10, -2 Hacer
+  Escribir(contador)
+FinPara`
+    const tokens = new Lexer.Lexer(source).tokenize()
+    const statements = new Parser.Parser(tokens).parse()
+
+    expect(statements).toHaveLength(1)
+    if (statements[0].type !== 'For') {
+      throw new Error('Se esperaba un nodo For')
+    }
+
+    expect(statements[0].step?.type).toBe('UnaryExpression')
+  })
 })

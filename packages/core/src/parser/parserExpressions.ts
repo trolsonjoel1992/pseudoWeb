@@ -7,6 +7,39 @@ export function parseExpression(state: ParserState): Ast.ExpressionNode {
   return parseOr(state)
 }
 
+function toBinaryOperator(type: TokenType): Ast.BinaryOperator {
+  switch (type) {
+    case TokenType.Suma:
+    case TokenType.Resta:
+    case TokenType.Multiplicacion:
+    case TokenType.Division:
+    case TokenType.Div:
+    case TokenType.Mod:
+    case TokenType.Potencia:
+    case TokenType.Igual:
+    case TokenType.Distinto:
+    case TokenType.Menor:
+    case TokenType.Mayor:
+    case TokenType.MenorIgual:
+    case TokenType.MayorIgual:
+    case TokenType.Y:
+    case TokenType.O:
+      return type
+    default:
+      throw new Error(`Operador binario no soportado: ${type}`)
+  }
+}
+
+function toUnaryOperator(type: TokenType): Ast.UnaryOperator {
+  switch (type) {
+    case TokenType.Resta:
+    case TokenType.No:
+      return type
+    default:
+      throw new Error(`Operador unario no soportado: ${type}`)
+  }
+}
+
 function parseOr(state: ParserState): Ast.ExpressionNode {
   let expr = parseAnd(state)
   while (match(state, TokenType.O)) {
@@ -74,7 +107,7 @@ function parsePower(state: ParserState): Ast.ExpressionNode {
 function parseUnary(state: ParserState): Ast.ExpressionNode {
   if (match(state, TokenType.Resta) || match(state, TokenType.No)) {
     const operator = previous(state)
-    return { type: 'UnaryExpression', operator: operator.type, right: parseUnary(state), line: operator.line, column: operator.column }
+    return { type: 'UnaryExpression', operator: toUnaryOperator(operator.type), right: parseUnary(state), line: operator.line, column: operator.column }
   }
 
   return parsePrimary(state)
@@ -102,6 +135,6 @@ function parsePrimary(state: ParserState): Ast.ExpressionNode {
   throw parserError(state, token, 'Se esperaba una expresión')
 }
 
-function binary(left: Ast.ExpressionNode, operator: { type: string; line: number; column: number }, right: Ast.ExpressionNode): Ast.BinaryExpressionNode {
-  return { type: 'BinaryExpression', operator: operator.type, left, right, line: operator.line, column: operator.column }
+function binary(left: Ast.ExpressionNode, operator: { type: TokenType; line: number; column: number }, right: Ast.ExpressionNode): Ast.BinaryExpressionNode {
+  return { type: 'BinaryExpression', operator: toBinaryOperator(operator.type), left, right, line: operator.line, column: operator.column }
 }

@@ -32,6 +32,13 @@ describe('Evaluator', () => {
     expect(result.variables.suma).toBe(6)
   })
 
+  it('ejecuta bucles con Hasta y paso negativo', () => {
+    const result = execute('suma := 0\nPara i := 3 Hasta 1, -1 Hacer\n  suma := suma + i\nFinPara\nEscribir(suma)')
+
+    expect(result.output).toEqual(['6'])
+    expect(result.variables.suma).toBe(6)
+  })
+
   it('ejecuta bucles con paso negativo', () => {
     const result = execute('suma := 0\nPara i := 3 .. 1 Hacer\n  suma := suma + i\nFinPara\nEscribir(suma)')
 
