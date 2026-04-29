@@ -54,9 +54,6 @@ export class Evaluator {
             case 'For':
                 this.evaluateFor(node);
                 return;
-            case 'ExpressionStatement':
-                this.evaluateExpression(node.expression);
-                return;
             default:
                 throw new RuntimeError(`Nodo de sentencia desconocido: ${(node as { type: string }).type}`);
         }

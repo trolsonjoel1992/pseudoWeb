@@ -36,8 +36,35 @@ export function checkAny(state: ParserState, types: TokenType[]): boolean {
 }
 
 export function checkNext(state: ParserState, ...types: TokenType[]): boolean {
-  const next = state.tokens[state.current + 1]
-  return Boolean(next) && types.includes(next.type)
+  const nextIndex = state.current + 1
+  if (nextIndex < 0 || nextIndex >= state.tokens.length) return false
+  const next = state.tokens[nextIndex]
+  return types.includes(next.type)
+}
+
+export function parseCommaSeparatedList<T>(
+  state: ParserState,
+  elementParser: (state: ParserState) => T,
+  allowParens = false,
+  open: TokenType = TokenType.ParentesisIzquierdo,
+  close: TokenType = TokenType.ParentesisDerecho,
+): T[] {
+  const items: T[] = []
+
+  if (allowParens && match(state, open)) {
+    if (!check(state, close)) {
+      do {
+        items.push(elementParser(state))
+      } while (match(state, TokenType.Coma))
+    }
+    consume(state, close, `Se esperaba ')' al cerrar la lista`)
+    return items
+  }
+
+  // No parens: at least one element expected
+  items.push(elementParser(state))
+  while (match(state, TokenType.Coma)) items.push(elementParser(state))
+  return items
 }
 
 export function match(state: ParserState, type: TokenType): boolean {

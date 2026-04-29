@@ -1,4 +1,26 @@
 export namespace Ast {
+  export type DataType = 'Entero' | 'Real' | 'Caracter' | 'Alfanumerico'
+  export type LiteralValue = string | number | boolean | null
+
+  export type UnaryOperator = 'Resta' | 'No'
+
+  export type BinaryOperator =
+    | 'Suma'
+    | 'Resta'
+    | 'Multiplicacion'
+    | 'Division'
+    | 'Div'
+    | 'Mod'
+    | 'Potencia'
+    | 'Igual'
+    | 'Distinto'
+    | 'Menor'
+    | 'Mayor'
+    | 'MenorIgual'
+    | 'MayorIgual'
+    | 'Y'
+    | 'O'
+
   export interface Node {
     type: string;
     line?: number;
@@ -13,7 +35,7 @@ export namespace Ast {
   export interface VariableDeclarationNode extends Node {
     type: 'VariableDeclaration';
     variables: string[]; // Lista de nombres de variables
-    dataType: string;
+    dataType: DataType;
   }
 
   export interface AssignmentNode extends Node {
@@ -54,14 +76,9 @@ export namespace Ast {
     step?: ExpressionNode;
   }
 
-  export interface ExpressionStatementNode extends Node {
-    type: 'ExpressionStatement';
-    expression: ExpressionNode;
-  }
-
   export interface LiteralNode extends Node {
     type: 'Literal';
-    value: string | number | boolean | null;
+    value: LiteralValue;
   }
 
   export interface IdentifierNode extends Node {
@@ -71,14 +88,14 @@ export namespace Ast {
 
   export interface BinaryExpressionNode extends Node {
     type: 'BinaryExpression';
-    operator: string;
+    operator: BinaryOperator;
     left: ExpressionNode;
     right: ExpressionNode;
   }
 
   export interface UnaryExpressionNode extends Node {
     type: 'UnaryExpression';
-    operator: string;
+    operator: UnaryOperator;
     right: ExpressionNode;
   }
 
@@ -101,6 +118,5 @@ export namespace Ast {
     | ReadNode
     | IfNode
     | WhileNode
-    | ForNode
-    | ExpressionStatementNode;
+    | ForNode;
 }

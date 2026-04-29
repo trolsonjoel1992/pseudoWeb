@@ -1,7 +1,7 @@
 import { Ast } from './ast'
 import { TokenType } from '../lexer/tokenTypes'
 import { ParserState } from './parserState'
-import { check, checkAny, checkNext, consume, consumeAny, match, parserError, peek, previous, skipSeparators, isAtEnd } from './parserUtils'
+import { check, checkAny, checkNext, consume, consumeAny, match, parserError, peek, previous, skipSeparators, isAtEnd, parseCommaSeparatedList } from './parserUtils'
 import { parseExpression } from './parserExpressions'
 
 export function parseProgram(state: ParserState): Ast.StatementNode[] {
@@ -39,7 +39,8 @@ function parseVariableDeclaration(state: ParserState): Ast.VariableDeclarationNo
   do variables.push(consume(state, TokenType.Identificador, 'Se esperaba un identificador').lexeme)
   while (match(state, TokenType.Coma))
   consume(state, TokenType.DosPuntos, "Se esperaba ':' después de las variables")
-  const dataType = consumeAny(state, [TokenType.Identificador, TokenType.Verdadero, TokenType.Falso], 'Se esperaba un tipo de dato').lexeme
+  const dataTypeToken = consumeAny(state, [TokenType.Entero, TokenType.Real, TokenType.Alfanumerico, TokenType.Caracter], 'Se esperaba un tipo de dato')
+  const dataType = toDataType(dataTypeToken.type)
   return { type: 'VariableDeclaration', variables, dataType, line: start.line, column: start.column }
 }
 
@@ -50,31 +51,17 @@ function parseAssignment(state: ParserState): Ast.AssignmentNode {
 }
 
 function parseWrite(state: ParserState): Ast.WriteNode {
-  const token = previous(state)
-  const values: Ast.ExpressionNode[] = []
 
-  if (match(state, TokenType.ParentesisIzquierdo)) {
-    if (!check(state, TokenType.ParentesisDerecho)) do values.push(parseExpression(state)); while (match(state, TokenType.Coma))
-    consume(state, TokenType.ParentesisDerecho, "Se esperaba ')' al cerrar Escribir")
-  } else {
-    values.push(parseExpression(state))
-    while (match(state, TokenType.Coma)) values.push(parseExpression(state))
-  }
+  const token = previous(state)
+  const values = parseCommaSeparatedList(state, parseExpression, true)
 
   return { type: 'Write', values, line: token.line, column: token.column }
 }
 
 function parseRead(state: ParserState): Ast.ReadNode {
-  const token = previous(state)
-  const variables: string[] = []
 
-  if (match(state, TokenType.ParentesisIzquierdo)) {
-    if (!check(state, TokenType.ParentesisDerecho)) do variables.push(consume(state, TokenType.Identificador, 'Se esperaba un identificador en Leer').lexeme); while (match(state, TokenType.Coma))
-    consume(state, TokenType.ParentesisDerecho, "Se esperaba ')' al cerrar Leer")
-  } else {
-    variables.push(consume(state, TokenType.Identificador, 'Se esperaba un identificador en Leer').lexeme)
-    while (match(state, TokenType.Coma)) variables.push(consume(state, TokenType.Identificador, 'Se esperaba un identificador en Leer').lexeme)
-  }
+  const token = previous(state)
+  const variables = parseCommaSeparatedList(state, (s) => consume(s, TokenType.Identificador, 'Se esperaba un identificador en Leer').lexeme, true)
 
   return { type: 'Read', variables, line: token.line, column: token.column }
 }
@@ -103,12 +90,19 @@ function parseFor(state: ParserState): Ast.ForNode {
   const variable = consume(state, TokenType.Identificador, 'Se esperaba el nombre del contador').lexeme
   consume(state, TokenType.Asignacion, "Se esperaba ':=' en el Para")
   const start = parseExpression(state)
-  if (!match(state, TokenType.Rango) && !match(state, TokenType.HastaQue)) throw parserError(state, peek(state), "Se esperaba '..' o HastaQue en el Para")
+  // Consumir el separador de rango ('..'), 'Hasta' o compatibilidad con 'HastaQue'
+  consumeAny(state, [TokenType.Rango, TokenType.Hasta, TokenType.HastaQue], "Se esperaba '..' o Hasta en el Para")
   const end = parseExpression(state)
-  match(state, TokenType.Hacer)
+
+  let step: Ast.ExpressionNode | undefined = undefined
+  if (match(state, TokenType.Coma)) {
+    step = parseExpression(state)
+  }
+
+  consume(state, TokenType.Hacer, "Se esperaba 'Hacer' en el Para")
   const body = parseBlock(state, [TokenType.FinPara])
   consume(state, TokenType.FinPara, 'Se esperaba FinPara')
-  return { type: 'For', variable, start, end, body, line: token.line, column: token.column }
+  return { type: 'For', variable, start, end, body, step, line: token.line, column: token.column }
 }
 
 function parseBlock(state: ParserState, stoppers: TokenType[]): Ast.StatementNode[] {
@@ -120,4 +114,21 @@ function parseBlock(state: ParserState, stoppers: TokenType[]): Ast.StatementNod
   }
   skipSeparators(state)
   return statements
+}
+
+function toDataType(type: TokenType): Ast.DataType {
+  switch (type) {
+    case TokenType.Entero:
+      return 'Entero'
+    case TokenType.Real:
+      return 'Real'
+    case TokenType.Caracter:
+      return 'Caracter'
+    case TokenType.Alfanumerico:
+      return 'Alfanumerico'
+    default:
+      throw parserError({ tokens: [
+        { type, lexeme: type, literal: null, line: 0, column: 0 },
+      ], current: 0 }, { type, lexeme: type, literal: null, line: 0, column: 0 }, 'Se esperaba un tipo de dato')
+  }
 }

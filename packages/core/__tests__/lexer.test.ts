@@ -32,6 +32,13 @@ describe('Lexer', () => {
     expect(tokens.some((token) => token.type === TokenType.Rango)).toBe(true)
   })
 
+  it('reconoce Hasta como palabra reservada del Para', () => {
+    const tokens = new Lexer.Lexer('Para i := 1 Hasta 3 Hacer').tokenize()
+
+    expect(tokens.some((token) => token.type === TokenType.Hasta)).toBe(true)
+    expect(tokens.some((token) => token.type === TokenType.Hacer)).toBe(true)
+  })
+
   it('falla con comentario sin cerrar', () => {
     expect(() => new Lexer.Lexer('/* comentario').tokenize()).toThrow('Comentario sin cerrar')
   })
