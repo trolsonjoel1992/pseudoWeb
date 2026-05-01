@@ -5,11 +5,9 @@ import { ConsolePanel } from './components/ConsolePanel'
 import { SideNavBar } from './components/SideNavBar'
 import type { DashboardMenu } from './types/ui'
 
-type AppView = 'codigo' | 'ejecutar'
-
 function App() {
-  const [activeView, setActiveView] = useState<AppView>('codigo')
   const [activeMenu, setActiveMenu] = useState<DashboardMenu>('codigo')
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
   const [isConsoleCleared, setIsConsoleCleared] = useState(false)
   const [code, setCode] = useState('')
@@ -17,7 +15,6 @@ function App() {
 
   const handleExecute = () => {
     setIsConsoleCleared(false)
-    setActiveView('ejecutar')
     setActiveMenu('consola')
     void execute(code)
   }
@@ -26,137 +23,124 @@ function App() {
     setIsConsoleCleared(true)
   }
 
+  // Datos de consola y errores
   const consoleLines = useMemo(() => {
-    if (isConsoleCleared) {
-      return ['Consola limpiada manualmente.', 'Esperando nueva ejecucion...']
-    }
-
-    if (!result) {
-      return ['Sin salida por consola para esta ejecucion.']
-    }
-
-    return result.output.length > 0 ? result.output : ['Sin salida por consola para esta ejecucion.']
+    if (isConsoleCleared)
+      return ['Consola limpiada manualmente.', 'Esperando nueva ejecución...']
+    if (!result)
+      return ['Sin salida por consola para esta ejecución.']
+    return result.output.length > 0 ? result.output : ['Sin salida por consola para esta ejecución.']
   }, [isConsoleCleared, result])
 
   const errorLines = useMemo(() => {
-    if (isConsoleCleared) {
-      return ['Panel de errores limpiado.']
-    }
-
-    if (!result?.error) {
-      return ['Sin errores detectados.']
-    }
-
+    if (isConsoleCleared) return ['Panel de errores limpiado.']
+    if (!result?.error) return ['Sin errores detectados.']
     return [
       `${result.error.type}: ${result.error.message}`,
-      result.error.line ? `Linea: ${result.error.line}` : 'Linea: no disponible',
+      result.error.line ? `Línea: ${result.error.line}` : 'Línea: no disponible',
       result.error.column ? `Columna: ${result.error.column}` : 'Columna: no disponible',
     ]
   }, [isConsoleCleared, result])
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_10%_0%,rgba(203,213,225,0.3),transparent_35%),radial-gradient(circle_at_100%_0%,rgba(96,165,250,0.2),transparent_28%),linear-gradient(180deg,#faf8ff_0%,#edf1f7_100%)] font-body text-slate-900">
-      <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 pb-8 pt-5 md:px-6">
-        <section className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-white/80 p-2 backdrop-blur">
-          <button
-            type="button"
-            onClick={() => setActiveView('codigo')}
-            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
-              activeView === 'codigo' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            Codigo
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView('ejecutar')}
-            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
-              activeView === 'ejecutar' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'
-            }`}
-          >
-            Ejecutar
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsMobileDrawerOpen(true)}
-            className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 md:hidden"
-            aria-label="Abrir menu lateral"
-          >
-            |||
-          </button>
-        </section>
+    <div className="flex h-screen flex-col overflow-hidden bg-[radial-gradient(circle_at_10%_0%,rgba(203,213,225,0.3),transparent_35%),radial-gradient(circle_at_100%_0%,rgba(96,165,250,0.2),transparent_28%),linear-gradient(180deg,#faf8ff_0%,#edf1f7_100%)]">
+      {/* Barra superior fija */}
+      <header className="flex items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-3 backdrop-blur flex-shrink-0">
+        {/* Botón hamburguesa escritorio: colapsa/expande sidebar */}
+        <button
+          type="button"
+          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          className="hidden md:inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-100"
+          aria-label={isSidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
+        >
+          ☰
+        </button>
 
-        <div className="flex min-h-[calc(100vh-140px)] gap-5">
-          <div className={`flex w-full flex-1 gap-5 ${activeView === 'ejecutar' ? 'md:grid md:grid-cols-2' : ''}`}>
-            {activeView === 'ejecutar' ? (
-              <div className="hidden md:block">
-                <SideNavBar
-                  activeMenu={activeMenu}
-                  isMobileOpen={false}
-                  onCloseMobile={() => setIsMobileDrawerOpen(false)}
-                  onMenuChange={(menu) => {
-                    setActiveMenu(menu)
-                    setIsConsoleCleared(false)
-                    setIsMobileDrawerOpen(false)
-                  }}
-                  onClearConsole={handleClearConsole}
-                  onNewScript={() => {
-                    setCode('')
-                    setActiveView('codigo')
-                    setActiveMenu('nuevoScript')
-                    setIsConsoleCleared(false)
-                    setIsMobileDrawerOpen(false)
-                  }}
-                />
-              </div>
-            ) : null}
+        {/* Botón hamburguesa móvil: abre drawer */}
+        <button
+          type="button"
+          onClick={() => setIsMobileDrawerOpen(true)}
+          className="inline-flex md:hidden h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600"
+          aria-label="Abrir menú lateral"
+        >
+          ☰
+        </button>
 
-            {activeView === 'ejecutar' ? (
-              <div className="md:hidden">
-                <SideNavBar
-                  activeMenu={activeMenu}
-                  isMobileOpen={isMobileDrawerOpen}
-                  onCloseMobile={() => setIsMobileDrawerOpen(false)}
-                  onMenuChange={(menu) => {
-                    setActiveMenu(menu)
-                    setIsConsoleCleared(false)
-                    setIsMobileDrawerOpen(false)
-                  }}
-                  onClearConsole={handleClearConsole}
-                  onNewScript={() => {
-                    setCode('')
-                    setActiveView('codigo')
-                    setActiveMenu('nuevoScript')
-                    setIsConsoleCleared(false)
-                    setIsMobileDrawerOpen(false)
-                  }}
-                />
-              </div>
-            ) : null}
+        <span className="text-sm font-bold text-slate-700">pseudoWeb</span>
+      </header>
 
-            <div className="flex min-h-[520px] flex-1 flex-col gap-5">
-              <section className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur md:p-5">
-                {activeView === 'codigo' || activeMenu === 'codigo' ? (
-                  <CodeEditor value={code} onChange={setCode} onExecute={handleExecute} isExecuting={isExecuting} showLineNumbers />
-                ) : null}
-
-                {activeView === 'ejecutar' && activeMenu === 'consola' ? (
-                  <ConsolePanel lines={consoleLines} onClearConsole={handleClearConsole} />
-                ) : null}
-
-                {activeView === 'ejecutar' && activeMenu === 'errores' ? (
-                  <ConsolePanel
-                    lines={errorLines}
-                    isRuntimeError={Boolean(result?.error)}
-                    runtimeError={result?.error}
-                    onClearConsole={handleClearConsole}
-                  />
-                ) : null}
-              </section>
-            </div>
-          </div>
+      {/* Cuerpo principal: sidebar + contenido */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar escritorio (colapsable) */}
+        <div
+          className={`hidden md:block h-full transition-all duration-300 ${
+            isSidebarCollapsed ? 'w-0 overflow-hidden' : 'w-64'
+          }`}
+        >
+          <SideNavBar
+            activeMenu={activeMenu}
+            isMobileOpen={false}
+            onCloseMobile={() => setIsMobileDrawerOpen(false)}
+            onMenuChange={(menu) => {
+              setActiveMenu(menu)
+              setIsConsoleCleared(false)
+              setIsMobileDrawerOpen(false)
+            }}
+            onNewScript={() => {
+              setCode('')
+              setActiveMenu('codigo')
+              setIsConsoleCleared(false)
+              setIsMobileDrawerOpen(false)
+            }}
+          />
         </div>
-      </main>
+
+        {/* Sidebar móvil (overlay) */}
+        <div className="md:hidden">
+          <SideNavBar
+            activeMenu={activeMenu}
+            isMobileOpen={isMobileDrawerOpen}
+            onCloseMobile={() => setIsMobileDrawerOpen(false)}
+            onMenuChange={(menu) => {
+              setActiveMenu(menu)
+              setIsConsoleCleared(false)
+              setIsMobileDrawerOpen(false)
+            }}
+            onNewScript={() => {
+              setCode('')
+              setActiveMenu('codigo')
+              setIsConsoleCleared(false)
+              setIsMobileDrawerOpen(false)
+            }}
+          />
+        </div>
+
+        {/* Contenido dinámico */}
+        <section className="flex-1 overflow-auto p-4 md:p-5">
+          <div className="h-full rounded-2xl border border-slate-200/70 bg-white/70 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur md:p-5">
+            {activeMenu === 'codigo' && (
+              <CodeEditor
+                value={code}
+                onChange={setCode}
+                onExecute={handleExecute}
+                isExecuting={isExecuting}
+                showLineNumbers
+              />
+            )}
+            {activeMenu === 'consola' && (
+              <ConsolePanel lines={consoleLines} onClearConsole={handleClearConsole} />
+            )}
+            {activeMenu === 'errores' && (
+              <ConsolePanel
+                lines={errorLines}
+                isRuntimeError={Boolean(result?.error)}
+                runtimeError={result?.error}
+                onClearConsole={handleClearConsole}
+              />
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   )
 }

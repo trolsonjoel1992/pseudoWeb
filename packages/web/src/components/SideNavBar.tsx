@@ -6,7 +6,6 @@ type SideNavBarProps = {
   activeMenu: DashboardMenu
   isMobileOpen: boolean
   onMenuChange: (menu: Exclude<DashboardMenu, 'nuevoScript'>) => void
-  onClearConsole: () => void
   onNewScript: () => void
   onCloseMobile: () => void
 }
@@ -15,7 +14,6 @@ export function SideNavBar({
   activeMenu,
   isMobileOpen,
   onMenuChange,
-  onClearConsole,
   onNewScript,
   onCloseMobile,
 }: SideNavBarProps) {
@@ -34,7 +32,7 @@ export function SideNavBar({
       >
         <div className="flex items-center justify-between md:justify-start">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-bold text-blue-700">Ejecutar</h2>
+            <h2 className="text-sm font-bold text-blue-700">Menú</h2>
           </div>
           <button
             type="button"
@@ -57,23 +55,14 @@ export function SideNavBar({
             />
           ))}
         </div>
-
-        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-2">
-          <button
-            type="button"
-            onClick={onClearConsole}
-            className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
-          >
-            Limpiar consola
-          </button>
-          <button
-            type="button"
-            onClick={onNewScript}
-            className="w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
-          >
-            Nuevo script
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onNewScript}
+          className="w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
+        >
+          Nuevo Pseudocódigo
+        </button>
+        
       </aside>
     </>
   )
