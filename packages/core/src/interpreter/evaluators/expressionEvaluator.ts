@@ -1,13 +1,13 @@
-import type { Ast } from '../../parser/ast'
+import type { BinaryExpressionNode, ExpressionNode, UnaryExpressionNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
 import { isTruthy, toComparable, toNumber } from '../utils/valueUtils'
 
 type ExpressionEvaluatorContext = {
-  evaluateExpression: (node: Ast.ExpressionNode) => unknown
+  evaluateExpression: (node: ExpressionNode) => unknown
   lookup: (name: string) => unknown
 }
 
-export function evaluateExpressionNode(node: Ast.ExpressionNode, context: ExpressionEvaluatorContext): unknown {
+export function evaluateExpressionNode(node: ExpressionNode, context: ExpressionEvaluatorContext): unknown {
   switch (node.type) {
     case 'Literal':
       return node.value
@@ -24,7 +24,7 @@ export function evaluateExpressionNode(node: Ast.ExpressionNode, context: Expres
   }
 }
 
-function evaluateUnaryExpression(node: Ast.UnaryExpressionNode, context: ExpressionEvaluatorContext): unknown {
+function evaluateUnaryExpression(node: UnaryExpressionNode, context: ExpressionEvaluatorContext): unknown {
   const right = context.evaluateExpression(node.right)
 
   switch (node.operator) {
@@ -37,7 +37,7 @@ function evaluateUnaryExpression(node: Ast.UnaryExpressionNode, context: Express
   }
 }
 
-function evaluateBinaryExpression(node: Ast.BinaryExpressionNode, context: ExpressionEvaluatorContext): unknown {
+function evaluateBinaryExpression(node: BinaryExpressionNode, context: ExpressionEvaluatorContext): unknown {
   const left = context.evaluateExpression(node.left)
   const right = context.evaluateExpression(node.right)
 

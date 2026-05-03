@@ -1,13 +1,13 @@
-import { ParserError } from '../errors'
-import { Lexer } from '../lexer/lexer'
-import { TokenType } from '../lexer/tokenTypes'
-import { ParserState } from './parserState'
+import { ParserError } from '../../errors'
+import type { Token } from '../../lexer/lexer'
+import { TokenType } from '../../lexer/tokenTypes'
+import { ParserState } from '../gramars/parserState'
 
-export function peek(state: ParserState): Lexer.Token {
+export function peek(state: ParserState): Token {
   return state.tokens[state.current]
 }
 
-export function previous(state: ParserState): Lexer.Token {
+export function previous(state: ParserState): Token {
   return state.tokens[state.current - 1]
 }
 
@@ -15,7 +15,7 @@ export function isAtEnd(state: ParserState): boolean {
   return peek(state).type === TokenType.EOF
 }
 
-export function advance(state: ParserState): Lexer.Token {
+export function advance(state: ParserState): Token {
   if (!isAtEnd(state)) {
     state.current += 1
   }
@@ -76,7 +76,7 @@ export function match(state: ParserState, type: TokenType): boolean {
   return true
 }
 
-export function consume(state: ParserState, type: TokenType, message: string): Lexer.Token {
+export function consume(state: ParserState, type: TokenType, message: string): Token {
   if (check(state, type)) {
     return advance(state)
   }
@@ -84,7 +84,7 @@ export function consume(state: ParserState, type: TokenType, message: string): L
   throw parserError(state, peek(state), message)
 }
 
-export function consumeAny(state: ParserState, types: TokenType[], message: string): Lexer.Token {
+export function consumeAny(state: ParserState, types: TokenType[], message: string): Token {
   for (const type of types) {
     if (check(state, type)) {
       return advance(state)
@@ -100,7 +100,7 @@ export function skipSeparators(state: ParserState): void {
   }
 }
 
-export function parserError(_state: ParserState, token: Lexer.Token, message: string): ParserError {
+export function parserError(_state: ParserState, token: Token, message: string): ParserError {
   const location = token.type === TokenType.EOF ? 'al final del archivo' : `en '${token.lexeme}'`
   return new ParserError(`${message} ${location}`, token.line, token.column)
 }

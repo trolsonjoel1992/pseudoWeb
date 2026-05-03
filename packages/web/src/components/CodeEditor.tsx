@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useCodeEditorKeyboard } from '../hooks/useCodeEditorKeyboard'
 
 type CodeEditorProps = {
@@ -19,6 +20,14 @@ export function CodeEditor({
   const lineNumbers = Array.from({ length: lineCount }, (_, i) => i + 1)
   const hasCode = value.trim().length > 0
   const handleKeyDown = useCodeEditorKeyboard(value, onChange)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const lineNumbersRef = useRef<HTMLDivElement>(null)
+
+  const handleScroll = () => {
+    if (lineNumbersRef.current && textareaRef.current) {
+      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop
+    }
+  }
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -44,7 +53,10 @@ export function CodeEditor({
 
       <div className="flex h-[320px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner xl:h-[420px]">
         {showLineNumbers && (
-          <div className="min-w-12 border-r border-slate-200 bg-slate-50 px-2 py-3 text-right font-code text-[13px] leading-7 text-slate-400">
+          <div
+            ref={lineNumbersRef}
+            className="min-w-12 overflow-y-hidden border-r border-slate-200 bg-slate-50 px-2 py-3 text-right font-code text-[13px] leading-7 text-slate-400"
+          >
             {lineNumbers.map((line) => (
               <p key={line}>{line}</p>
             ))}
@@ -52,10 +64,12 @@ export function CodeEditor({
         )}
 
         <textarea
+          ref={textareaRef}
           className="h-full w-full resize-none bg-white px-4 py-3 font-code text-[15px] leading-7 text-slate-800 outline-none ring-blue-600 transition focus:ring-2"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onScroll={handleScroll}
           spellCheck={false}
           aria-label="Editor"
         />

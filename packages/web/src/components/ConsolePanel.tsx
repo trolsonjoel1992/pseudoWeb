@@ -1,13 +1,42 @@
+import { useEffect, useRef } from 'react'
 import type { ExecutionError } from '../types'
 
 type ConsolePanelProps = {
   lines: string[]
+  inputValue: string
+  onInputChange: (value: string) => void
+  onSubmitInput: () => void
+  isAwaitingInput: boolean
   isRuntimeError?: boolean
   runtimeError?: ExecutionError
   onClearConsole: () => void
 }
 
-export function ConsolePanel({ lines, isRuntimeError = false, runtimeError, onClearConsole }: ConsolePanelProps) {
+export function ConsolePanel({
+  lines,
+  inputValue,
+  onInputChange,
+  onSubmitInput,
+  isAwaitingInput,
+  isRuntimeError = false,
+  runtimeError,
+  onClearConsole,
+}: ConsolePanelProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const consoleRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isAwaitingInput) {
+      inputRef.current?.focus()
+    }
+  }, [isAwaitingInput])
+
+  useEffect(() => {
+    if (consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight
+    }
+  }, [lines, isAwaitingInput])
+
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
@@ -25,6 +54,7 @@ export function ConsolePanel({ lines, isRuntimeError = false, runtimeError, onCl
       </div>
 
       <div
+        ref={consoleRef}
         className="relative min-h-[320px] flex-1 overflow-y-auto rounded-xl bg-[#191b24] p-4 font-code text-[14px] leading-7 text-slate-200 shadow-inner"
         role="status"
         aria-live="polite"
@@ -48,7 +78,29 @@ export function ConsolePanel({ lines, isRuntimeError = false, runtimeError, onCl
           </p>
         ) : null}
 
-        <div className="mt-2 inline-block h-4 w-2 animate-pulse bg-blue-500 align-middle" aria-hidden="true" />
+        {isAwaitingInput ? (
+          <div className="mt-3 flex items-center gap-2 text-slate-100">
+            <span className="text-blue-400">&gt;</span>
+            <input
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  onSubmitInput()
+                }
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full bg-transparent font-code text-[14px] leading-7 text-slate-100 outline-none placeholder:text-slate-600"
+              aria-label="Entrada de consola"
+            />
+            <span className="select-none text-slate-100 animate-pulse" aria-hidden="true">
+              _
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   )

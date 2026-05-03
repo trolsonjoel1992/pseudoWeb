@@ -4,13 +4,21 @@ import { Parser } from '../src/parser/parser'
 
 describe('Parser', () => {
   it('parsea una asignación y una escritura', () => {
-    const tokens = new Lexer.Lexer('a, b : Entero\na := 4 + 2\nEscribir(a)').tokenize()
-    const statements = new Parser.Parser(tokens).parse()
+    const source = `Accion prueba : ES
+Ambiente
+  a, b : Entero
+Proceso
+  a := 4 + 2
+  Escribir(a)
+FinAccion`
+    const tokens = new Lexer(source).tokenize()
+    const action = new Parser(tokens).parse()
+    const statements = action.proceso
 
-    expect(statements).toHaveLength(3)
-    expect(statements[0].type).toBe('VariableDeclaration')
-    expect(statements[1].type).toBe('Assignment')
-    expect(statements[2].type).toBe('Write')
+    // Ahora el parser retorna ActionNode con el bloque Proceso
+    expect(statements).toHaveLength(2)
+    expect(statements[0].type).toBe('Assignment')
+    expect(statements[1].type).toBe('Write')
   })
 
   it('parsea un Si con bloque SiNo', () => {
@@ -20,16 +28,28 @@ SiNo
   Escribir("mayor")
 FinSi`
 
-    const tokens = new Lexer.Lexer(source).tokenize()
-    const statements = new Parser.Parser(tokens).parse()
+    const wrapped = `Accion prueba2 : ES
+  Ambiente
+  Proceso
+  ${source}
+  FinAccion`
+    const tokens = new Lexer(wrapped).tokenize()
+    const action = new Parser(tokens).parse()
+    const statements = action.proceso
 
     expect(statements).toHaveLength(1)
     expect(statements[0].type).toBe('If')
   })
 
   it('respeta precedencia aritmetica', () => {
-    const tokens = new Lexer.Lexer('a := 2 + 3 * 4').tokenize()
-    const statements = new Parser.Parser(tokens).parse()
+    const wrapped = `Accion prueba3 : ES
+Ambiente
+Proceso
+  a := 2 + 3 * 4
+FinAccion`
+    const tokens = new Lexer(wrapped).tokenize()
+    const action = new Parser(tokens).parse()
+    const statements = action.proceso
 
     expect(statements).toHaveLength(1)
     expect(statements[0].type).toBe('Assignment')
@@ -49,8 +69,14 @@ FinSi`
   })
 
   it('mantiene asociatividad derecha de potencia', () => {
-    const tokens = new Lexer.Lexer('a := 2 ** 3 ** 2').tokenize()
-    const statements = new Parser.Parser(tokens).parse()
+    const wrapped = `Accion prueba4 : ES
+Ambiente
+Proceso
+  a := 2 ** 3 ** 2
+FinAccion`
+    const tokens = new Lexer(wrapped).tokenize()
+    const action = new Parser(tokens).parse()
+    const statements = action.proceso
     const assignment = statements[0]
 
     if (assignment.type !== 'Assignment' || assignment.value.type !== 'BinaryExpression') {
@@ -62,11 +88,16 @@ FinSi`
   })
 
   it('parsea Para con Hasta y paso negativo', () => {
-    const source = `Para contador := 100 Hasta 10, -2 Hacer
+    const source = `Accion paraPrueba : ES
+Ambiente
+Proceso
+Para contador := 100 Hasta 10, -2 Hacer
   Escribir(contador)
-FinPara`
-    const tokens = new Lexer.Lexer(source).tokenize()
-    const statements = new Parser.Parser(tokens).parse()
+FinPara
+FinAccion`
+    const tokens = new Lexer(source).tokenize()
+    const action = new Parser(tokens).parse()
+    const statements = action.proceso
 
     expect(statements).toHaveLength(1)
     if (statements[0].type !== 'For') {

@@ -66,6 +66,7 @@ export enum TokenType {
   Entero = "Entero",
   Real = "Real",
   Caracter = "Caracter",
+    Logico = "Logico",
   Alfanumerico = "Alfanumerico",
 
   // Otros

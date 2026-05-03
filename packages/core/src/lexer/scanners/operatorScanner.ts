@@ -1,5 +1,5 @@
-import { LexerError } from '../errors'
-import { TokenType } from './tokenTypes'
+import { LexerError } from '../../errors'
+import { TokenType } from '../tokenTypes'
 
 type Literal = string | number | boolean | null
 
