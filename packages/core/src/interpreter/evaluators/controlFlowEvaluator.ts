@@ -1,29 +1,30 @@
-import type { Ast } from '../../parser/ast'
+import type { ExpressionNode, ForNode, IfNode, StatementNode, WhileNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
 import { isTruthy, toNumber } from '../utils/valueUtils'
 
 type ControlFlowEvaluatorContext = {
-  evaluateExpression: (node: Ast.ExpressionNode) => unknown
-  evaluateBlock: (statements: Ast.StatementNode[]) => void
+  evaluateExpression: (node: ExpressionNode) => unknown
+  evaluateBlock: (statements: StatementNode[]) => Promise<void>
   hasVariable: (name: string) => boolean
+  lookupVariableType: (name: string) => string | null
   assignVariable: (name: string, value: unknown) => void
   defineVariable: (name: string, value: unknown) => void
 }
 
-export function evaluateIfNode(node: Ast.IfNode, context: ControlFlowEvaluatorContext): void {
+export async function evaluateIfNode(node: IfNode, context: ControlFlowEvaluatorContext): Promise<void> {
   if (isTruthy(context.evaluateExpression(node.condition))) {
-    context.evaluateBlock(node.thenBranch)
+    await context.evaluateBlock(node.thenBranch)
     return
   }
 
-  context.evaluateBlock(node.elseBranch)
+  await context.evaluateBlock(node.elseBranch)
 }
 
-export function evaluateWhileNode(node: Ast.WhileNode, context: ControlFlowEvaluatorContext): void {
+export async function evaluateWhileNode(node: WhileNode, context: ControlFlowEvaluatorContext): Promise<void> {
   let guard = 0
 
   while (isTruthy(context.evaluateExpression(node.condition))) {
-    context.evaluateBlock(node.body)
+    await context.evaluateBlock(node.body)
     guard += 1
 
     if (guard > 10000) {
@@ -32,7 +33,7 @@ export function evaluateWhileNode(node: Ast.WhileNode, context: ControlFlowEvalu
   }
 }
 
-export function evaluateForNode(node: Ast.ForNode, context: ControlFlowEvaluatorContext): void {
+export async function evaluateForNode(node: ForNode, context: ControlFlowEvaluatorContext): Promise<void> {
   const start = toNumber(context.evaluateExpression(node.start))
   const end = toNumber(context.evaluateExpression(node.end))
   const step = node.step ? toNumber(context.evaluateExpression(node.step)) : start <= end ? 1 : -1
@@ -44,14 +45,14 @@ export function evaluateForNode(node: Ast.ForNode, context: ControlFlowEvaluator
   if (step > 0) {
     for (let value = start; value <= end; value += step) {
       bindLoopVariable(node.variable, value, context)
-      context.evaluateBlock(node.body)
+      await context.evaluateBlock(node.body)
     }
     return
   }
 
   for (let value = start; value >= end; value += step) {
     bindLoopVariable(node.variable, value, context)
-    context.evaluateBlock(node.body)
+    await context.evaluateBlock(node.body)
   }
 }
 

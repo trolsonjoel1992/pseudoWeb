@@ -10,16 +10,28 @@ function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
   const [isConsoleCleared, setIsConsoleCleared] = useState(false)
+  const [consoleInput, setConsoleInput] = useState('')
   const [code, setCode] = useState('')
-  const { execute, result, isExecuting } = useInterpreter()
+  const { execute, submitInput, inputRequest, outputLines, result, isExecuting } = useInterpreter()
 
   const handleExecute = () => {
     setIsConsoleCleared(false)
     setActiveMenu('consola')
+    setConsoleInput('')
     void execute(code)
   }
 
+  const handleSubmitInput = () => {
+    if (!inputRequest) return
+
+    const accepted = submitInput(consoleInput)
+    if (accepted) {
+      setConsoleInput('')
+    }
+  }
+
   const handleClearConsole = () => {
+    setConsoleInput('')
     setIsConsoleCleared(true)
   }
 
@@ -27,10 +39,12 @@ function App() {
   const consoleLines = useMemo(() => {
     if (isConsoleCleared)
       return ['Consola limpiada manualmente.', 'Esperando nueva ejecución...']
+    if (outputLines.length > 0) return outputLines
+    if (isExecuting) return ['Ejecución en curso...']
     if (!result)
       return ['Sin salida por consola para esta ejecución.']
     return result.output.length > 0 ? result.output : ['Sin salida por consola para esta ejecución.']
-  }, [isConsoleCleared, result])
+  }, [isConsoleCleared, isExecuting, outputLines, result])
 
   const errorLines = useMemo(() => {
     if (isConsoleCleared) return ['Panel de errores limpiado.']
@@ -69,9 +83,7 @@ function App() {
         <span className="text-sm font-bold text-slate-700">pseudoWeb</span>
       </header>
 
-      {/* Cuerpo principal: sidebar + contenido */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar escritorio (colapsable) */}
         <div
           className={`hidden md:block h-full transition-all duration-300 ${
             isSidebarCollapsed ? 'w-0 overflow-hidden' : 'w-64'
@@ -95,7 +107,6 @@ function App() {
           />
         </div>
 
-        {/* Sidebar móvil (overlay) */}
         <div className="md:hidden">
           <SideNavBar
             activeMenu={activeMenu}
@@ -128,13 +139,24 @@ function App() {
               />
             )}
             {activeMenu === 'consola' && (
-              <ConsolePanel lines={consoleLines} onClearConsole={handleClearConsole} />
+              <ConsolePanel
+                lines={consoleLines}
+                inputValue={consoleInput}
+                onInputChange={setConsoleInput}
+                onSubmitInput={handleSubmitInput}
+                isAwaitingInput={Boolean(inputRequest)}
+                onClearConsole={handleClearConsole}
+              />
             )}
             {activeMenu === 'errores' && (
               <ConsolePanel
                 lines={errorLines}
                 isRuntimeError={Boolean(result?.error)}
                 runtimeError={result?.error}
+                inputValue={consoleInput}
+                onInputChange={setConsoleInput}
+                onSubmitInput={handleSubmitInput}
+                isAwaitingInput={Boolean(inputRequest)}
                 onClearConsole={handleClearConsole}
               />
             )}

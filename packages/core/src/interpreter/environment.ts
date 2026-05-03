@@ -1,10 +1,12 @@
 import { RuntimeError } from "../errors";
+import type { DataType } from "../parser/ast";
 
 // Este archivo se encargará de la gestión de la tabla de símbolos (memoria) 
 // y la validación de rangos durante la ejecución del pseudocódigo.
 
 export class Environment {
     private readonly values: Map<string, any> = new Map();
+    private readonly types: Map<string, DataType> = new Map();
     private readonly enclosing: Environment | null;
 
     constructor(enclosing?: Environment) {
@@ -16,8 +18,11 @@ export class Environment {
      * @param name - El nombre de la variable.
      * @param value - El valor inicial de la variable.
      */
-    define(name: string, value: any): void {
+    define(name: string, value: any, type?: DataType): void {
         this.values.set(name, value);
+        if (type !== undefined) {
+            this.types.set(name, type);
+        }
     }
 
     /**
@@ -58,6 +63,18 @@ export class Environment {
         }
 
         throw new RuntimeError(`Variable no definida '${name}'.`);
+    }
+
+    lookupType(name: string): DataType | null {
+        if (this.types.has(name)) {
+            return this.types.get(name) ?? null;
+        }
+
+        if (this.enclosing !== null) {
+            return this.enclosing.lookupType(name);
+        }
+
+        return null;
     }
 
     has(name: string): boolean {

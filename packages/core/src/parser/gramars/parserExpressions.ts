@@ -1,13 +1,13 @@
-import { Ast } from './ast'
-import { TokenType } from '../lexer/tokenTypes'
-import { ParserState } from './parserState'
-import { consume, match, parserError, peek, previous } from './parserUtils'
+import type { BinaryExpressionNode, BinaryOperator, ExpressionNode, UnaryOperator } from '../ast'
+import { TokenType } from '../../lexer/tokenTypes'
+import { ParserState } from '../gramars/parserState'
+import { consume, match, parserError, peek, previous } from '../utils/parserUtils'
 
-export function parseExpression(state: ParserState): Ast.ExpressionNode {
+export function parseExpression(state: ParserState): ExpressionNode {
   return parseOr(state)
 }
 
-function toBinaryOperator(type: TokenType): Ast.BinaryOperator {
+function toBinaryOperator(type: TokenType): BinaryOperator {
   switch (type) {
     case TokenType.Suma:
     case TokenType.Resta:
@@ -30,7 +30,7 @@ function toBinaryOperator(type: TokenType): Ast.BinaryOperator {
   }
 }
 
-function toUnaryOperator(type: TokenType): Ast.UnaryOperator {
+function toUnaryOperator(type: TokenType): UnaryOperator {
   switch (type) {
     case TokenType.Resta:
     case TokenType.No:
@@ -40,7 +40,7 @@ function toUnaryOperator(type: TokenType): Ast.UnaryOperator {
   }
 }
 
-function parseOr(state: ParserState): Ast.ExpressionNode {
+function parseOr(state: ParserState): ExpressionNode {
   let expr = parseAnd(state)
   while (match(state, TokenType.O)) {
     const operator = previous(state)
@@ -49,7 +49,7 @@ function parseOr(state: ParserState): Ast.ExpressionNode {
   return expr
 }
 
-function parseAnd(state: ParserState): Ast.ExpressionNode {
+function parseAnd(state: ParserState): ExpressionNode {
   let expr = parseEquality(state)
   while (match(state, TokenType.Y)) {
     const operator = previous(state)
@@ -58,7 +58,7 @@ function parseAnd(state: ParserState): Ast.ExpressionNode {
   return expr
 }
 
-function parseEquality(state: ParserState): Ast.ExpressionNode {
+function parseEquality(state: ParserState): ExpressionNode {
   let expr = parseComparison(state)
   while (match(state, TokenType.Igual) || match(state, TokenType.Distinto)) {
     const operator = previous(state)
@@ -67,7 +67,7 @@ function parseEquality(state: ParserState): Ast.ExpressionNode {
   return expr
 }
 
-function parseComparison(state: ParserState): Ast.ExpressionNode {
+function parseComparison(state: ParserState): ExpressionNode {
   let expr = parseTerm(state)
   while (match(state, TokenType.Menor) || match(state, TokenType.MenorIgual) || match(state, TokenType.Mayor) || match(state, TokenType.MayorIgual)) {
     const operator = previous(state)
@@ -76,7 +76,7 @@ function parseComparison(state: ParserState): Ast.ExpressionNode {
   return expr
 }
 
-function parseTerm(state: ParserState): Ast.ExpressionNode {
+function parseTerm(state: ParserState): ExpressionNode {
   let expr = parseFactor(state)
   while (match(state, TokenType.Suma) || match(state, TokenType.Resta)) {
     const operator = previous(state)
@@ -85,7 +85,7 @@ function parseTerm(state: ParserState): Ast.ExpressionNode {
   return expr
 }
 
-function parseFactor(state: ParserState): Ast.ExpressionNode {
+function parseFactor(state: ParserState): ExpressionNode {
   let expr = parsePower(state)
   while (match(state, TokenType.Multiplicacion) || match(state, TokenType.Division) || match(state, TokenType.Div) || match(state, TokenType.Mod)) {
     const operator = previous(state)
@@ -94,7 +94,7 @@ function parseFactor(state: ParserState): Ast.ExpressionNode {
   return expr
 }
 
-function parsePower(state: ParserState): Ast.ExpressionNode {
+function parsePower(state: ParserState): ExpressionNode {
   const expr = parseUnary(state)
   if (!match(state, TokenType.Potencia)) {
     return expr
@@ -104,7 +104,7 @@ function parsePower(state: ParserState): Ast.ExpressionNode {
   return binary(expr, operator, parsePower(state))
 }
 
-function parseUnary(state: ParserState): Ast.ExpressionNode {
+function parseUnary(state: ParserState): ExpressionNode {
   if (match(state, TokenType.Resta) || match(state, TokenType.No)) {
     const operator = previous(state)
     return { type: 'UnaryExpression', operator: toUnaryOperator(operator.type), right: parseUnary(state), line: operator.line, column: operator.column }
@@ -113,7 +113,7 @@ function parseUnary(state: ParserState): Ast.ExpressionNode {
   return parsePrimary(state)
 }
 
-function parsePrimary(state: ParserState): Ast.ExpressionNode {
+function parsePrimary(state: ParserState): ExpressionNode {
   const token = peek(state)
 
   if (match(state, TokenType.Entero) || match(state, TokenType.Real) || match(state, TokenType.Alfanumerico) || match(state, TokenType.Caracter) || match(state, TokenType.Verdadero) || match(state, TokenType.Falso)) {
@@ -135,6 +135,6 @@ function parsePrimary(state: ParserState): Ast.ExpressionNode {
   throw parserError(state, token, 'Se esperaba una expresión')
 }
 
-function binary(left: Ast.ExpressionNode, operator: { type: TokenType; line: number; column: number }, right: Ast.ExpressionNode): Ast.BinaryExpressionNode {
+function binary(left: ExpressionNode, operator: { type: TokenType; line: number; column: number }, right: ExpressionNode): BinaryExpressionNode {
   return { type: 'BinaryExpression', operator: toBinaryOperator(operator.type), left, right, line: operator.line, column: operator.column }
 }
