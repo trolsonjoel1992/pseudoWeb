@@ -2,7 +2,7 @@ import { TokenType } from './tokenTypes'
 import { scanIdentifierToken } from './scanners/identifierScanner'
 import { scanNumberToken } from './scanners/numberScanner'
 import { scanStringToken } from './scanners/stringScanner'
-import { skipBlockComment } from './scanners/commentScanner'
+import { skipBlockComment, skipLineComment } from './scanners/commentScanner'
 import { scanOperatorToken } from './scanners/operatorScanner'
 import { isAlpha, isAlphaNumeric, isDigit } from './utils/charUtils'
 
@@ -61,6 +61,18 @@ export class Lexer {
 
     if (char === '/' && this.peekNext() === '*') {
       skipBlockComment({
+        line: this.line,
+        column: this.column,
+        isAtEnd: this.isAtEnd.bind(this),
+        peek: this.peek.bind(this),
+        peekNext: this.peekNext.bind(this),
+        advance: this.advance.bind(this),
+      })
+      return
+    }
+
+    if (char === '/' && this.peekNext() === '/') {
+      skipLineComment({
         line: this.line,
         column: this.column,
         isAtEnd: this.isAtEnd.bind(this),

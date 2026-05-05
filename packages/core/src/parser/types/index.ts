@@ -1,32 +1,15 @@
-/**
- * AST Type Definitions - Re-exported from modularized types
- * 
- * This file maintains backward compatibility by re-exporting all AST types
- * that are now organized in separate modules under ./types/
- */
+// Re-export all types from types modules
 
-export type {
-  Node,
-} from './types/core'
-
-export type {
-  UnaryOperator,
-  BinaryOperator,
-} from './types/operations'
-
-export type {
-  DataType,
-  LiteralValue,
-} from './types/data'
-
+export type { Node } from './core'
+export type { UnaryOperator, BinaryOperator } from './operations'
+export type { DataType, LiteralValue } from './data'
 export type {
   VariableDeclarationNode,
   ConstantDeclarationNode,
   ParameterNode,
   FunctionDeclarationNode,
   ProcedureDeclarationNode,
-} from './types/declarations'
-
+} from './declarations'
 export type {
   LiteralNode,
   IdentifierNode,
@@ -35,16 +18,14 @@ export type {
   GroupingNode,
   FunctionCallNode,
   ExpressionNode,
-} from './types/expressions'
-
+} from './expressions'
 export type {
   AssignmentNode,
   WriteNode,
   ReadNode,
   CallStatementNode,
   BasicStatementNode,
-} from './types/statements'
-
+} from './statements'
 export type {
   IfNode,
   WhileNode,
@@ -54,9 +35,8 @@ export type {
   SwitchCaseNode,
   SwitchNode,
   StatementNode,
-} from './types/control'
-
+} from './control'
 export type {
   EnvironmentBlockNode,
   ActionNode,
-} from './types/environment'
+} from './environment'

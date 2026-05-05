@@ -24,7 +24,6 @@ export enum TokenType {
   Escribir = "Escribir",
   Funcion = "Funcion",
   Procedimiento = "Procedimiento",
-  Retornar = "Retornar",
   Entonces = "Entonces",
   ES = "ES",
   Ambiente = "Ambiente",

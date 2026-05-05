@@ -22,7 +22,6 @@ export const KEYWORDS: Readonly<Record<string, TokenType>> = {
   finfuncion: TokenType.FinFuncion,
   procedimiento: TokenType.Procedimiento,
   finprocedimiento: TokenType.FinProcedimiento,
-  retornar: TokenType.Retornar,
   segun: TokenType.Segun,
   otro: TokenType.Otro,
   finsegun: TokenType.FinSegun,
@@ -34,13 +33,16 @@ export const KEYWORDS: Readonly<Record<string, TokenType>> = {
   entonces: TokenType.Entonces,
   verdadero: TokenType.Verdadero,
   falso: TokenType.Falso,
-  div: TokenType.Div,
-  mod: TokenType.Mod,
+  logico: TokenType.Logico,
   y: TokenType.Y,
   o: TokenType.O,
   no: TokenType.No,
 }
 
 export const resolveIdentifierType = (lexeme: string): TokenType => {
+  // DIV y MOD son obligatoriamente en mayúsculas.
+  if (lexeme === 'DIV') return TokenType.Div
+  if (lexeme === 'MOD') return TokenType.Mod
+
   return KEYWORDS[lexeme.toLowerCase()] ?? TokenType.Identificador;
 }

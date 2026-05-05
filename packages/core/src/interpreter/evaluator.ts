@@ -1,242 +1,262 @@
 import type {
-    ActionNode,
-    AssignmentNode,
-    ExpressionNode,
-    ForNode,
-    IfNode,
-    ReadNode,
-    StatementNode,
-    VariableDeclarationNode,
-    WhileNode,
-    WriteNode,
-    SwitchNode,
-    DoWhileNode,
-} from '../parser/ast';
-import { RuntimeError } from '../errors';
-import { Environment } from './environment';
-import { evaluateExpressionNode } from './evaluators/expressionEvaluator';
-import { evaluateIfNode, evaluateWhileNode, evaluateForNode } from './evaluators/controlFlowEvaluator';
-import { evaluateWriteNode, evaluateReadNode } from './evaluators/ioEvaluator';
+  ActionNode,
+  AssignmentNode,
+  CallStatementNode,
+  DoWhileNode,
+  EnvironmentBlockNode,
+  ExpressionNode,
+  ForNode,
+  IfNode,
+  ReadNode,
+  StatementNode,
+  SwitchNode,
+  VariableDeclarationNode,
+  WhileNode,
+  WriteNode,
+} from '../parser/ast'
+import { RuntimeError } from '../errors'
+import { Environment } from './environment'
+import { TypeChecker } from './typeSystem'
+import { CallableRegistry } from './callableRegistry'
+import { ContextFactory } from './contextFactory'
+import { CallableExecutor } from './callableExecutor'
+import { EnvironmentManager } from './environmentManager'
+import type { EvaluatorContext } from './types/evaluatorContext'
+
+import { evaluateExpressionNode } from './evaluators/expressionEvaluator'
+import { evaluateForNode, evaluateIfNode, evaluateWhileNode } from './evaluators/controlFlowEvaluator'
+import { evaluateReadNode, evaluateWriteNode } from './evaluators/ioEvaluator'
+import { evaluateSwitchNode } from './evaluators/switchEvaluator'
+import { evaluateDoWhileNode } from './evaluators/doWhileEvaluator'
 
 export interface EvaluationResult {
-    output: string[];
-    variables: Record<string, unknown>;
+  output: string[]
+  variables: Record<string, unknown>
 }
 
-export type InputRequestHandler = (name: string) => Promise<unknown>;
+export type InputRequestHandler = (name: string) => Promise<unknown>
 
-export type OutputHandler = (line: string) => void;
+export type OutputHandler = (line: string) => void
 
 export class Evaluator {
-    private environment: Environment;
-    private readonly output: string[] = [];
-    private readonly requestInput: InputRequestHandler;
-    private readonly pushOutput: OutputHandler;
+  private environment: Environment
+  private readonly output: string[] = []
+  private readonly requestInput: InputRequestHandler
+  private readonly pushOutput: OutputHandler
+  private registry: CallableRegistry = new CallableRegistry()
+  private typeChecker: TypeChecker = new TypeChecker()
+  private readonly environmentManager: EnvironmentManager
+  private readonly callableExecutor: CallableExecutor
+  private readonly context: EvaluatorContext
 
-    constructor(environment: Environment, requestInput: InputRequestHandler = async () => null, pushOutput?: OutputHandler) {
-        this.environment = environment;
-        this.requestInput = requestInput;
-        this.pushOutput = pushOutput ?? ((line) => this.output.push(line));
+  constructor(environment: Environment, requestInput: InputRequestHandler = async () => null, pushOutput?: OutputHandler) {
+    this.environment = environment
+    this.requestInput = requestInput
+    this.pushOutput = pushOutput ?? ((line) => this.output.push(line))
+    this.environmentManager = new EnvironmentManager(environment)
+    this.callableExecutor = new CallableExecutor(
+      {
+        getEnvironment: () => this.environment,
+        setEnvironment: (nextEnvironment) => {
+          this.environment = nextEnvironment
+        },
+        getRegistry: () => this.registry,
+        setRegistry: (nextRegistry) => {
+          this.registry = nextRegistry
+        },
+        evaluateBlock: (statements) => this.evaluateBlock(statements),
+        initializeEnvironmentDeclarations: (ambiente) => this.initializeEnvironmentDeclarations(ambiente),
+      },
+      this.typeChecker,
+      this.environmentManager,
+    )
+    this.context = new ContextFactory({
+      evaluateExpression: (node) => this.evaluateExpression(node),
+      evaluateBlock: (nodes) => this.evaluateBlock(nodes),
+      hasVariable: (name) => this.environment.has(name),
+      lookupVariable: (name) => this.environment.lookup(name),
+      lookupVariableType: (name) => this.environment.lookupType(name),
+      assignVariable: (name, value) => this.environment.assign(name, value),
+      defineVariable: (name, value, type, isConstant) => this.environment.define(name, value, type, isConstant),
+      requestInput: (prompt) => this.requestInput(prompt),
+      pushOutput: (line) => this.pushOutput(line),
+      invokeFunction: (name, args) => this.invokeFunction(name, args),
+      getEnvironment: () => this.environment,
+      getTypeChecker: () => this.typeChecker,
+    }).create()
+  }
+
+  public async evaluate(action: ActionNode): Promise<EvaluationResult> {
+    this.registry.registerFromEnvironment(action.ambiente)
+    this.initializeEnvironmentDeclarations(action.ambiente)
+
+    for (const statement of action.proceso) {
+      await this.evaluateStatement(statement)
     }
 
-    public async evaluate(action: ActionNode): Promise<EvaluationResult> {        // Procesar declaraciones del bloque Ambiente
-        // Primero: Variables
-        for (const variableDecl of action.ambiente.variables) {
-            for (const variable of variableDecl.variables) {
-                this.environment.define(variable, null, variableDecl.dataType);
-            }
-        }
-        // Luego: Constantes (almacenadas con valor)
-        for (const constantDecl of action.ambiente.constants) {
-            this.environment.define(constantDecl.name, constantDecl.value, constantDecl.dataType);
-        }
-        // Funciones y Procedimientos se registrarían aquí (por ahora omitimos)
-                // Evaluar las sentencias del bloque Proceso
-        for (const statement of action.proceso) {
-            await this.evaluateStatement(statement);
-        }
+    return {
+      output: [...this.output],
+      variables: this.environment.snapshot(),
+    }
+  }
 
-        return {
-            output: [...this.output],
-            variables: this.environment.snapshot(),
-        };
+  private initializeEnvironmentDeclarations(ambiente: EnvironmentBlockNode): void {
+    for (const variableDecl of ambiente.variables) {
+      for (const variable of variableDecl.variables) {
+        this.environment.define(variable, null, variableDecl.dataType)
+      }
     }
 
-    private async evaluateStatement(node: StatementNode): Promise<void> {
-        switch (node.type) {
-            case "VariableDeclaration":
-                this.evaluateVariableDeclaration(node);
-                return;
-            case "Assignment":
-                this.evaluateAssignment(node);
-                return;
-            case 'Write':
-                this.evaluateWrite(node);
-                return;
-            case 'Read':
-                await this.evaluateRead(node);
-                return;
-            case 'If':
-                await this.evaluateIf(node);
-                return;
-            case 'While':
-                await this.evaluateWhile(node);
-                return;
-            case 'For':
-                await this.evaluateFor(node);
-                return;
-            case 'Switch':
-                await this.evaluateSwitch(node as SwitchNode);
-                return;
-            case 'DoWhile':
-                await this.evaluateDoWhile(node as DoWhileNode);
-                return;
-            default:
-                throw new RuntimeError(`Nodo de sentencia desconocido: ${(node as { type: string }).type}`);
-        }
+    for (const constantDecl of ambiente.constants) {
+      this.environment.define(constantDecl.name, constantDecl.value, constantDecl.dataType, true)
+    }
+  }
+
+  private async evaluateStatement(node: StatementNode): Promise<void> {
+    switch (node.type) {
+      case 'VariableDeclaration':
+        this.evaluateVariableDeclaration(node)
+        return
+      case 'Assignment':
+        await this.evaluateAssignment(node)
+        return
+      case 'CallStatement':
+        await this.evaluateCallStatement(node)
+        return
+      case 'Write':
+        await this.evaluateWrite(node)
+        return
+      case 'Read':
+        await this.evaluateRead(node)
+        return
+      case 'If':
+        await this.evaluateIf(node)
+        return
+      case 'While':
+        await this.evaluateWhile(node)
+        return
+      case 'For':
+        await this.evaluateFor(node)
+        return
+      case 'Switch':
+        await this.evaluateSwitch(node as SwitchNode)
+        return
+      case 'DoWhile':
+        await this.evaluateDoWhile(node as DoWhileNode)
+        return
+      default:
+        throw new RuntimeError(`Nodo de sentencia desconocido: ${(node as { type: string }).type}`)
+    }
+  }
+
+  private evaluateVariableDeclaration(node: VariableDeclarationNode): void {
+    for (const variable of node.variables) {
+      this.environment.define(variable, null, node.dataType)
+    }
+  }
+
+  private async evaluateAssignment(node: AssignmentNode): Promise<void> {
+    const value = await this.evaluateExpression(node.value)
+    this.typeChecker.assertVariableExists(node.variable, this.environment)
+
+    const expectedType = this.environment.lookupType(node.variable)
+    if (expectedType !== null && value !== null) {
+      this.typeChecker.assertValueMatchesType(value, expectedType, `la variable '${node.variable}'`)
     }
 
-    private evaluateVariableDeclaration(node: VariableDeclarationNode): void {
-        for (const variable of node.variables) {
-            this.environment.define(variable, null, node.dataType);
-        }
+    this.environment.assign(node.variable, value)
+  }
+
+  private async evaluateCallStatement(node: CallStatementNode): Promise<void> {
+    const args: unknown[] = []
+    for (const arg of node.call.arguments) {
+      args.push(await this.evaluateExpression(arg))
     }
 
-    private evaluateAssignment(node: AssignmentNode): void {
-        const value = this.evaluateExpression(node.value);
-        if (this.environment.has(node.variable)) {
-            this.environment.assign(node.variable, value);
-            return;
-        }
-
-        this.environment.define(node.variable, value);
+    if (this.registry.isProcedure(node.call.name)) {
+      await this.invokeProcedure(node.call.name, args)
+      return
     }
 
-    private evaluateWrite(node: WriteNode): void {
-        evaluateWriteNode(node, {
-            evaluateExpression: this.evaluateExpression.bind(this),
-            requestInput: this.requestInput,
-            hasVariable: this.environment.has.bind(this.environment),
-            lookupVariableType: this.environment.lookupType.bind(this.environment),
-            assignVariable: this.environment.assign.bind(this.environment),
-            defineVariable: this.environment.define.bind(this.environment),
-            pushOutput: this.pushOutput,
-        });
+    if (this.registry.isFunction(node.call.name)) {
+      await this.invokeFunction(node.call.name, args)
+      return
     }
 
-    private async evaluateRead(node: ReadNode): Promise<void> {
-        await evaluateReadNode(node, {
-            evaluateExpression: this.evaluateExpression.bind(this),
-            requestInput: this.requestInput,
-            hasVariable: this.environment.has.bind(this.environment),
-            lookupVariableType: this.environment.lookupType.bind(this.environment),
-            assignVariable: this.environment.assign.bind(this.environment),
-            defineVariable: this.environment.define.bind(this.environment),
-            pushOutput: this.pushOutput,
-        });
+    throw new RuntimeError(`No existe una función o procedimiento llamado '${node.call.name}'.`)
+  }
+
+  private async evaluateWrite(node: WriteNode): Promise<void> {
+    await evaluateWriteNode(node, this.context)
+  }
+
+  private async evaluateRead(node: ReadNode): Promise<void> {
+    await evaluateReadNode(node, this.context)
+  }
+
+  private async evaluateIf(node: IfNode): Promise<void> {
+    await evaluateIfNode(node, this.context)
+  }
+
+  private async evaluateWhile(node: WhileNode): Promise<void> {
+    await evaluateWhileNode(node, this.context)
+  }
+
+  private async evaluateFor(node: ForNode): Promise<void> {
+    await evaluateForNode(node, this.context)
+  }
+
+  private async evaluateBlock(statements: StatementNode[]): Promise<void> {
+    for (const statement of statements) {
+      await this.evaluateStatement(statement)
+    }
+  }
+
+  private async evaluateExpression(node: ExpressionNode): Promise<unknown> {
+    return await evaluateExpressionNode(node, this.context)
+  }
+
+  private async invokeFunction(name: string, args: unknown[]): Promise<unknown> {
+    if (name.toLowerCase() === 'redond') {
+      if (args.length !== 1) {
+        throw new RuntimeError("REDOND requiere exactamente 1 argumento.")
+      }
+      const value = args[0]
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new RuntimeError('REDOND solo acepta un argumento numérico.')
+      }
+      return Math.round(value)
     }
 
-    private async evaluateIf(node: IfNode): Promise<void> {
-        await evaluateIfNode(node, {
-            evaluateExpression: this.evaluateExpression.bind(this),
-            evaluateBlock: this.evaluateBlock.bind(this),
-            hasVariable: this.environment.has.bind(this.environment),
-            lookupVariableType: this.environment.lookupType.bind(this.environment),
-            assignVariable: this.environment.assign.bind(this.environment),
-            defineVariable: this.environment.define.bind(this.environment),
-        });
+    const declaration = this.registry.getFunction(name)
+    if (!declaration) {
+      if (this.registry.isProcedure(name)) {
+        throw new RuntimeError(`'${name}' es un procedimiento y no puede usarse dentro de una expresión.`)
+      }
+      throw new RuntimeError(`No existe una función llamada '${name}'.`)
     }
 
-    private async evaluateWhile(node: WhileNode): Promise<void> {
-        await evaluateWhileNode(node, {
-            evaluateExpression: this.evaluateExpression.bind(this),
-            evaluateBlock: this.evaluateBlock.bind(this),
-            hasVariable: this.environment.has.bind(this.environment),
-            lookupVariableType: this.environment.lookupType.bind(this.environment),
-            assignVariable: this.environment.assign.bind(this.environment),
-            defineVariable: this.environment.define.bind(this.environment),
-        });
+    return await this.callableExecutor.executeFunction(declaration, args)
+  }
+
+  private async invokeProcedure(name: string, args: unknown[]): Promise<void> {
+    const declaration = this.registry.getProcedure(name)
+    if (!declaration) {
+      if (this.registry.isFunction(name)) {
+        throw new RuntimeError(`'${name}' es una función y debe usarse dentro de una expresión.`)
+      }
+      throw new RuntimeError(`No existe un procedimiento llamado '${name}'.`)
     }
 
-    private async evaluateFor(node: ForNode): Promise<void> {
-        await evaluateForNode(node, {
-            evaluateExpression: this.evaluateExpression.bind(this),
-            evaluateBlock: this.evaluateBlock.bind(this),
-            hasVariable: this.environment.has.bind(this.environment),
-            lookupVariableType: this.environment.lookupType.bind(this.environment),
-            assignVariable: this.environment.assign.bind(this.environment),
-            defineVariable: this.environment.define.bind(this.environment),
-        });
-    }
+    await this.callableExecutor.executeProcedure(declaration, args)
+  }
 
-    private async evaluateBlock(statements: StatementNode[]): Promise<void> {
-        for (const statement of statements) {
-            await this.evaluateStatement(statement);
-        }
-    }
+  private async evaluateSwitch(node: SwitchNode): Promise<void> {
+    await evaluateSwitchNode(node, this.context)
+  }
 
-    private evaluateExpression(node: ExpressionNode): any {
-        return evaluateExpressionNode(node, {
-            evaluateExpression: this.evaluateExpression.bind(this),
-            lookup: this.environment.lookup.bind(this.environment),
-        });
-    }
-
-    private async evaluateSwitch(node: SwitchNode): Promise<void> {
-        const expressionValue = this.evaluateExpression(node.expression);
-
-        for (const switchCase of node.cases) {
-            let matches = false;
-
-            switch (switchCase.condition.type) {
-                case 'Default':
-                    matches = true;
-                    break;
-                case 'ExactMatch': {
-                    const caseValue = this.evaluateExpression(switchCase.condition.value);
-                    matches = expressionValue === caseValue;
-                    break;
-                }
-                case 'Comparison': {
-                    const caseValue = this.evaluateExpression(switchCase.condition.value);
-                    switch (switchCase.condition.operator) {
-                        case 'Mayor':
-                            matches = expressionValue > caseValue;
-                            break;
-                        case 'Menor':
-                            matches = expressionValue < caseValue;
-                            break;
-                        case 'MayorIgual':
-                            matches = expressionValue >= caseValue;
-                            break;
-                        case 'MenorIgual':
-                            matches = expressionValue <= caseValue;
-                            break;
-                    }
-                    break;
-                }
-            }
-
-            if (matches) {
-                await this.evaluateBlock(switchCase.body);
-                break;
-            }
-        }
-    }
-
-    private async evaluateDoWhile(node: DoWhileNode): Promise<void> {
-        const maxIterations = 1000000;
-        let iterations = 0;
-
-        do {
-            iterations++;
-            if (iterations > maxIterations) {
-                throw new RuntimeError('Bucle Repetir excedió el límite de seguridad.');
-            }
-
-            await this.evaluateBlock(node.body);
-            const condition = this.evaluateExpression(node.condition);
-            if (condition) break;
-        } while (true);
-    }
+  private async evaluateDoWhile(node: DoWhileNode): Promise<void> {
+    await evaluateDoWhileNode(node, this.context)
+  }
 }
+
