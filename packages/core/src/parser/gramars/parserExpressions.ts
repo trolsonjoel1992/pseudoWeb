@@ -123,6 +123,25 @@ function parsePrimary(state: ParserState): ExpressionNode {
 
   if (match(state, TokenType.Identificador)) {
     const identifier = previous(state)
+
+    if (match(state, TokenType.ParentesisIzquierdo)) {
+      const args: ExpressionNode[] = []
+      if (!match(state, TokenType.ParentesisDerecho)) {
+        do {
+          args.push(parseExpression(state))
+        } while (match(state, TokenType.Coma))
+        consume(state, TokenType.ParentesisDerecho, "Se esperaba ')' después de los argumentos")
+      }
+
+      return {
+        type: 'FunctionCall',
+        name: identifier.lexeme,
+        arguments: args,
+        line: identifier.line,
+        column: identifier.column,
+      }
+    }
+
     return { type: 'Identifier', name: identifier.lexeme, line: identifier.line, column: identifier.column }
   }
 

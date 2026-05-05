@@ -106,4 +106,80 @@ FinAccion`
 
     expect(statements[0].step?.type).toBe('UnaryExpression')
   })
+
+  it('parsea llamadas de función en expresiones y llamadas como sentencia', () => {
+    const source = `Accion callPrueba : ES
+Ambiente
+  resultado : Entero
+  Funcion suma(a : Entero, b : Entero) : Entero
+  Proceso
+    suma := a + b
+  FinFuncion
+  Procedimiento mostrar(valor : Entero)
+  Proceso
+    Escribir(valor)
+  FinProcedimiento
+Proceso
+  resultado := suma(2, 3)
+  mostrar(resultado)
+FinAccion`
+
+    const tokens = new Lexer(source).tokenize()
+    const action = new Parser(tokens).parse()
+
+    expect(action.proceso).toHaveLength(2)
+    expect(action.proceso[0].type).toBe('Assignment')
+    expect(action.proceso[1].type).toBe('CallStatement')
+
+    const assignment = action.proceso[0]
+    if (assignment.type !== 'Assignment') {
+      throw new Error('Se esperaba un Assignment')
+    }
+
+    expect(assignment.value.type).toBe('FunctionCall')
+  })
+
+  it('parsea declaraciones con tipo AN(n)', () => {
+    const source = `Accion anPrueba : ES
+Ambiente
+  nombre : AN(20)
+Proceso
+  Escribir(nombre)
+FinAccion`
+
+    const tokens = new Lexer(source).tokenize()
+    const action = new Parser(tokens).parse()
+    const variableDecl = action.ambiente.variables[0]
+
+    expect(variableDecl.dataType).toEqual({ kind: 'AN', maxLength: 20 })
+  })
+
+  it('rechaza redeclaraciones en el mismo ambiente', () => {
+    const source = `Accion dupPrueba : ES
+Ambiente
+  a : Entero
+  a : Real
+Proceso
+  Escribir(a)
+FinAccion`
+
+    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow('Identificador redeclarado')
+  })
+
+  it('rechaza shadowing de variables locales respecto al ambiente externo', () => {
+    const source = `Accion shadowPrueba : ES
+Ambiente
+  valor : Entero
+  Funcion f(x : Entero) : Entero
+  Ambiente
+    valor : Entero
+  Proceso
+    f := x
+  FinFuncion
+Proceso
+  Escribir(valor)
+FinAccion`
+
+    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow('No se permite shadowing')
+  })
 })

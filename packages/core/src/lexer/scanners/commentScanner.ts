@@ -25,3 +25,10 @@ export function skipBlockComment(context: CommentScannerContext): void {
 
   throw new LexerError('Comentario sin cerrar', context.line, context.column)
 }
+
+export function skipLineComment(context: CommentScannerContext): void {
+  while (!context.isAtEnd() && context.peek() !== '\n') {
+    context.advance()
+  }
+  // \n no se consume, quedará en siguiente scanToken
+}

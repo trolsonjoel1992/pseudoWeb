@@ -5,8 +5,9 @@ import type { DataType } from "../parser/ast";
 // y la validación de rangos durante la ejecución del pseudocódigo.
 
 export class Environment {
-    private readonly values: Map<string, any> = new Map();
+    private readonly values: Map<string, unknown> = new Map();
     private readonly types: Map<string, DataType> = new Map();
+    private readonly constants: Set<string> = new Set();
     private readonly enclosing: Environment | null;
 
     constructor(enclosing?: Environment) {
@@ -18,10 +19,13 @@ export class Environment {
      * @param name - El nombre de la variable.
      * @param value - El valor inicial de la variable.
      */
-    define(name: string, value: any, type?: DataType): void {
+    define<T>(name: string, value: T, type?: DataType, isConstant = false): void {
         this.values.set(name, value);
         if (type !== undefined) {
             this.types.set(name, type);
+        }
+        if (isConstant) {
+            this.constants.add(name);
         }
     }
 
@@ -32,8 +36,11 @@ export class Environment {
      * @param name - El nombre de la variable.
      * @param value - El nuevo valor.
      */
-    assign(name: string, value: any): void {
+    assign(name: string, value: unknown): void {
         if (this.values.has(name)) {
+            if (this.constants.has(name)) {
+                throw new RuntimeError(`No se puede reasignar la constante '${name}'.`);
+            }
             this.values.set(name, value);
             return;
         }
@@ -53,7 +60,7 @@ export class Environment {
      * @param name - El nombre de la variable a buscar.
      * @returns El valor de la variable.
      */
-    lookup(name: string): any {
+    lookup(name: string): unknown {
         if (this.values.has(name)) {
             return this.values.get(name);
         }
@@ -84,6 +91,18 @@ export class Environment {
 
         if (this.enclosing !== null) {
             return this.enclosing.has(name);
+        }
+
+        return false;
+    }
+
+    isConstant(name: string): boolean {
+        if (this.constants.has(name)) {
+            return true;
+        }
+
+        if (this.enclosing !== null) {
+            return this.enclosing.isConstant(name);
         }
 
         return false;

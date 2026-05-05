@@ -1,30 +1,26 @@
 import type {
   ActionNode,
-  AssignmentNode,
   ConstantDeclarationNode,
   DataType,
   EnvironmentBlockNode,
-  ExpressionNode,
-  ForNode,
   FunctionDeclarationNode,
-  IfNode,
   LiteralValue,
   ParameterNode,
   ProcedureDeclarationNode,
-  ReadNode,
   StatementNode,
   VariableDeclarationNode,
-  WhileNode,
-  WriteNode,
-  SwitchNode,
-  SwitchCaseNode,
-  SwitchCaseCondition,
-  DoWhileNode,
 } from '../ast'
 import { TokenType } from '../../lexer/tokenTypes'
 import { ParserState } from './parserState'
-import { check, checkAny, checkNext, consume, consumeAny, match, parserError, peek, previous, skipSeparators, isAtEnd, parseCommaSeparatedList } from '../utils/parserUtils'
-import { parseExpression } from './parserExpressions'
+import { check, checkAny, checkNext, consume, consumeAny, match, parserError, peek, previous, skipSeparators, isAtEnd } from '../utils/parserUtils'
+import { parseStatement } from './statementDispatcher'
+import { parseVariableDeclaration as decParseVariableDeclaration } from './declarationParser'
+import { parseDataType, toDataType } from '../utils/parseDataTypeUtils'
+
+type ParseEnvironmentOptions = {
+  parentScopeNames?: Set<string>
+  disallowShadowing?: boolean
+}
 
 export function parseProgram(state: ParserState): ActionNode {
   skipSeparators(state)
@@ -54,8 +50,10 @@ export function parseProgram(state: ParserState): ActionNode {
     throw parserError(state, peek(state), 'Se esperaba el bloque "Proceso" después de Ambiente')
   }
 
-  // Parsear proceso hasta FinAccion
+  // Parsear proceso hasta FinAccion (con contexto inProcess = true)
+  state.inProcess = true
   const proceso = parseBlock(state, [TokenType.FinAccion])
+  state.inProcess = false
 
   // Consumir FinAccion
   consume(state, TokenType.FinAccion, "Se esperaba 'FinAccion' al final de la Accion")
@@ -63,97 +61,7 @@ export function parseProgram(state: ParserState): ActionNode {
   return { type: 'Action', name: actionName, ambiente, proceso, line: accionToken.line, column: accionToken.column }
 }
 
-function parseStatement(state: ParserState): StatementNode {
-  if (match(state, TokenType.Si)) return parseIf(state)
-  if (match(state, TokenType.Mientras)) return parseWhile(state)
-  if (match(state, TokenType.Para)) return parseFor(state)
-  if (match(state, TokenType.Escribir)) return parseWrite(state)
-  if (match(state, TokenType.Leer)) return parseRead(state)
-  if (match(state, TokenType.Segun)) return parseSegun(state)
-  if (match(state, TokenType.Repetir)) return parseRepetir(state)
-  if (check(state, TokenType.Identificador) && checkNext(state, TokenType.Coma, TokenType.DosPuntos)) return parseVariableDeclaration(state)
-  if (check(state, TokenType.Identificador) && checkNext(state, TokenType.Asignacion)) return parseAssignment(state)
-  if (check(state, TokenType.SaltoDeLinea) || check(state, TokenType.PuntoYComa)) {
-    skipSeparators(state)
-    return parseStatement(state)
-  }
-
-  throw parserError(state, peek(state), 'Sentencia no válida')
-}
-
-function parseVariableDeclaration(state: ParserState): VariableDeclarationNode {
-  const start = peek(state)
-  const variables: string[] = []
-  do variables.push(consume(state, TokenType.Identificador, 'Se esperaba un identificador').lexeme)
-  while (match(state, TokenType.Coma))
-  consume(state, TokenType.DosPuntos, "Se esperaba ':' después de las variables")
-  const dataTypeToken = consumeAny(state, [TokenType.Entero, TokenType.Real, TokenType.Alfanumerico, TokenType.Caracter, TokenType.Logico], 'Se esperaba un tipo de dato')
-  const dataType = toDataType(dataTypeToken.type)
-  return { type: 'VariableDeclaration', variables, dataType, line: start.line, column: start.column }
-}
-
-function parseAssignment(state: ParserState): AssignmentNode {
-  const variable = consume(state, TokenType.Identificador, 'Se esperaba una variable').lexeme
-  const equals = consume(state, TokenType.Asignacion, "Se esperaba ':=' en la asignación")
-  return { type: 'Assignment', variable, value: parseExpression(state), line: equals.line, column: equals.column }
-}
-
-function parseWrite(state: ParserState): WriteNode {
-
-  const token = previous(state)
-  const values = parseCommaSeparatedList(state, parseExpression, true)
-
-  return { type: 'Write', values, line: token.line, column: token.column }
-}
-
-function parseRead(state: ParserState): ReadNode {
-
-  const token = previous(state)
-  const variables = parseCommaSeparatedList(state, (s) => consume(s, TokenType.Identificador, 'Se esperaba un identificador en Leer').lexeme, true)
-
-  return { type: 'Read', variables, line: token.line, column: token.column }
-}
-
-function parseIf(state: ParserState): IfNode {
-  const token = previous(state)
-  const condition = parseExpression(state)
-  match(state, TokenType.Entonces)
-  const thenBranch = parseBlock(state, [TokenType.SiNo, TokenType.FinSi])
-  const elseBranch = match(state, TokenType.SiNo) ? parseBlock(state, [TokenType.FinSi]) : []
-  consume(state, TokenType.FinSi, 'Se esperaba FinSi')
-  return { type: 'If', condition, thenBranch, elseBranch, line: token.line, column: token.column }
-}
-
-function parseWhile(state: ParserState): WhileNode {
-  const token = previous(state)
-  const condition = parseExpression(state)
-  match(state, TokenType.Hacer)
-  const body = parseBlock(state, [TokenType.FinMientras])
-  consume(state, TokenType.FinMientras, 'Se esperaba FinMientras')
-  return { type: 'While', condition, body, line: token.line, column: token.column }
-}
-
-function parseFor(state: ParserState): ForNode {
-  const token = previous(state)
-  const variable = consume(state, TokenType.Identificador, 'Se esperaba el nombre del contador').lexeme
-  consume(state, TokenType.Asignacion, "Se esperaba ':=' en el Para")
-  const start = parseExpression(state)
-  // Consumir el separador de rango ('..'), 'Hasta' o compatibilidad con 'HastaQue'
-  consumeAny(state, [TokenType.Rango, TokenType.Hasta, TokenType.HastaQue], "Se esperaba '..' o Hasta en el Para")
-  const end = parseExpression(state)
-
-  let step: ExpressionNode | undefined = undefined
-  if (match(state, TokenType.Coma)) {
-    step = parseExpression(state)
-  }
-
-  consume(state, TokenType.Hacer, "Se esperaba 'Hacer' en el Para")
-  const body = parseBlock(state, [TokenType.FinPara])
-  consume(state, TokenType.FinPara, 'Se esperaba FinPara')
-  return { type: 'For', variable, start, end, body, step, line: token.line, column: token.column }
-}
-
-function parseBlock(state: ParserState, stoppers: TokenType[]): StatementNode[] {
+export function parseBlock(state: ParserState, stoppers: TokenType[]): StatementNode[] {
   const statements: StatementNode[] = []
   while (!isAtEnd(state) && !checkAny(state, stoppers)) {
     skipSeparators(state)
@@ -164,13 +72,14 @@ function parseBlock(state: ParserState, stoppers: TokenType[]): StatementNode[] 
   return statements
 }
 
-function parseEnvironment(state: ParserState): EnvironmentBlockNode {
-  enum Phase { Constants = 1, Types = 2, Variables = 3, Functions = 4 }
+export function parseEnvironment(state: ParserState, options?: ParseEnvironmentOptions): EnvironmentBlockNode {
+  enum Phase { Constants = 1, Variables = 2, Functions = 3 }
   let phase = Phase.Constants
   const constants: ConstantDeclarationNode[] = []
   const variables: VariableDeclarationNode[] = []
   const functions: FunctionDeclarationNode[] = []
   const procedures: ProcedureDeclarationNode[] = []
+  const declaredNames = new Set<string>()
 
   while (!isAtEnd(state) && !check(state, TokenType.Proceso)) {
     skipSeparators(state)
@@ -183,6 +92,7 @@ function parseEnvironment(state: ParserState): EnvironmentBlockNode {
       }
       const start = peek(state)
       const name = consume(state, TokenType.Identificador, 'Se esperaba identificador').lexeme
+      registerDeclarationName(state, name, declaredNames, options)
       consume(state, TokenType.Igual, "Se esperaba '='")
       const valueToken = consumeAny(state, [TokenType.Entero, TokenType.Real, TokenType.Caracter, TokenType.Alfanumerico, TokenType.Verdadero, TokenType.Falso], 'Se esperaba un literal al declarar una constante')
       const value = valueToken.literal as LiteralValue
@@ -192,21 +102,28 @@ function parseEnvironment(state: ParserState): EnvironmentBlockNode {
 
     // Variable declaration: Identificador (,) ':' Tipo
     if (check(state, TokenType.Identificador) && checkNext(state, TokenType.Coma, TokenType.DosPuntos)) {
+      if (phase > Phase.Variables) {
+        throw parserError(state, peek(state), 'Las variables deben declararse antes que funciones y procedimientos en Ambiente')
+      }
       phase = Math.max(phase, Phase.Variables)
-      variables.push(parseVariableDeclaration(state))
+      const declaration = decParseVariableDeclaration(state)
+      for (const variable of declaration.variables) {
+        registerDeclarationName(state, variable, declaredNames, options)
+      }
+      variables.push(declaration)
       continue
     }
 
     // Funcion / Procedimiento
     if (match(state, TokenType.Funcion)) {
       phase = Phase.Functions
-      functions.push(parseFunction(state))
+      functions.push(parseFunction(state, declaredNames, options))
       continue
     }
 
     if (match(state, TokenType.Procedimiento)) {
       phase = Phase.Functions
-      procedures.push(parseProcedure(state))
+      procedures.push(parseProcedure(state, declaredNames, options))
       continue
     }
 
@@ -217,15 +134,19 @@ function parseEnvironment(state: ParserState): EnvironmentBlockNode {
   return { type: 'EnvironmentBlock', constants, variables, functions, procedures }
 }
 
-function parseFunction(state: ParserState): FunctionDeclarationNode {
-  return parseCallable(state, 'Function') as FunctionDeclarationNode
+export function parseFunction(state: ParserState, declaredNames: Set<string>, options?: ParseEnvironmentOptions): FunctionDeclarationNode {
+  return parseCallable(state, 'Function', declaredNames, options) as FunctionDeclarationNode
 }
 
-function parseProcedure(state: ParserState): ProcedureDeclarationNode {
-  return parseCallable(state, 'Procedure') as ProcedureDeclarationNode
+export function parseProcedure(state: ParserState, declaredNames: Set<string>, options?: ParseEnvironmentOptions): ProcedureDeclarationNode {
+  return parseCallable(state, 'Procedure', declaredNames, options) as ProcedureDeclarationNode
 }
 
-function parseParameterList(state: ParserState): ParameterNode[] {
+export function parseParameterList(
+  state: ParserState,
+  localScopeNames: Set<string>,
+  parentScopeNames?: Set<string>,
+): ParameterNode[] {
   // Consume '(' already expected by callers in original code; keep same messages
   consume(state, TokenType.ParentesisIzquierdo, "Se esperaba '(' después del nombre de la función")
   const parameters: ParameterNode[] = []
@@ -233,12 +154,19 @@ function parseParameterList(state: ParserState): ParameterNode[] {
     do {
       const paramStart = peek(state)
       const paramName = consume(state, TokenType.Identificador, 'Se esperaba nombre de parámetro').lexeme
+      if (localScopeNames.has(paramName)) {
+        throw parserError(state, paramStart, `Identificador redeclarado en el mismo alcance: '${paramName}'`)
+      }
+      if (parentScopeNames?.has(paramName)) {
+        throw parserError(state, paramStart, `No se permite shadowing: '${paramName}' ya existe en el alcance externo`)
+      }
+      localScopeNames.add(paramName)
       consume(state, TokenType.DosPuntos, "Se esperaba ':' al declarar parámetro")
-      const paramType = consumeAny(state, [TokenType.Entero, TokenType.Real, TokenType.Caracter, TokenType.Logico, TokenType.Alfanumerico], 'Se esperaba tipo de parámetro')
+      const paramType = parseDataType(state)
       parameters.push({
         type: 'Parameter',
         name: paramName,
-        dataType: toDataType(paramType.type),
+        dataType: paramType,
         byReference: false,
         line: paramStart.line,
         column: paramStart.column,
@@ -249,36 +177,46 @@ function parseParameterList(state: ParserState): ParameterNode[] {
   return parameters
 }
 
-function parseCallable(state: ParserState, kind: 'Function' | 'Procedure'): FunctionDeclarationNode | ProcedureDeclarationNode {
+export function parseCallable(
+  state: ParserState,
+  kind: 'Function' | 'Procedure',
+  declaredNames: Set<string>,
+  options?: ParseEnvironmentOptions,
+): FunctionDeclarationNode | ProcedureDeclarationNode {
   const start = peek(state)
   const name = consume(state, TokenType.Identificador, kind === 'Function' ? 'Se esperaba nombre de función' : 'Se esperaba nombre de procedimiento').lexeme
+  registerDeclarationName(state, name, declaredNames, options)
 
-  // Parsear parámetros usando la nueva función
-  const parameters = parseParameterList(state)
+  const callableLocalNames = new Set<string>()
+  callableLocalNames.add(name)
+
+  const parameters = parseParameterList(state, callableLocalNames, options?.parentScopeNames)
 
   let returnType: DataType | undefined = undefined
   if (kind === 'Function') {
-    // Parsear tipo de retorno
     consume(state, TokenType.DosPuntos, "Se esperaba ':' antes del tipo de retorno")
-    const returnTypeToken = consumeAny(state, [TokenType.Entero, TokenType.Real, TokenType.Caracter, TokenType.Logico, TokenType.Alfanumerico], 'Se esperaba tipo de retorno')
-    returnType = toDataType(returnTypeToken.type)
+    returnType = parseDataType(state)
   }
 
-  // Parsear bloque opcional de Ambiente
   skipSeparators(state)
   let ambiente: EnvironmentBlockNode | undefined
   if (match(state, TokenType.Ambiente)) {
-    ambiente = { type: 'EnvironmentBlock', constants: [], variables: [], functions: [], procedures: [] }
-    skipSeparators(state)
+    const outerNames = new Set<string>([
+      ...(options?.parentScopeNames ?? new Set<string>()),
+      ...declaredNames,
+    ])
+
+    ambiente = parseEnvironment(state, {
+      parentScopeNames: new Set([...outerNames, ...callableLocalNames]),
+      disallowShadowing: true,
+    })
   }
 
-  // Parsear Proceso
   if (!match(state, TokenType.Proceso)) {
     throw parserError(state, peek(state), kind === 'Function' ? "Se esperaba 'Proceso' en la función" : "Se esperaba 'Proceso' en el procedimiento")
   }
   const proceso = parseBlock(state, [kind === 'Function' ? TokenType.FinFuncion : TokenType.FinProcedimiento])
 
-  // Consumir FinFuncion/FinProcedimiento
   consume(state, kind === 'Function' ? TokenType.FinFuncion : TokenType.FinProcedimiento, kind === 'Function' ? "Se esperaba 'FinFuncion'" : "Se esperaba 'FinProcedimiento'")
 
   if (kind === 'Function') {
@@ -305,97 +243,19 @@ function parseCallable(state: ParserState, kind: 'Function' | 'Procedure'): Func
   }
 }
 
-function toDataType(type: TokenType): DataType {
-  switch (type) {
-    case TokenType.Entero:
-      return 'Entero'
-    case TokenType.Real:
-      return 'Real'
-    case TokenType.Caracter:
-      return 'Caracter'
-    case TokenType.Logico:
-      return 'Logico'
-    case TokenType.Alfanumerico:
-      return 'Alfanumerico'
-    default:
-      throw parserError({ tokens: [
-        { type, lexeme: type, literal: null, line: 0, column: 0 },
-      ], current: 0 }, { type, lexeme: type, literal: null, line: 0, column: 0 }, 'Se esperaba un tipo de dato')
-  }
-}
-
-function parseSegun(state: ParserState): SwitchNode {
-  const token = previous(state)
-  const expression = parseExpression(state)
-  match(state, TokenType.Hacer)
-  skipSeparators(state)
-
-  const cases: SwitchCaseNode[] = []
-
-  while (!isAtEnd(state) && !check(state, TokenType.FinSegun)) {
-    skipSeparators(state)
-    if (isAtEnd(state) || check(state, TokenType.FinSegun)) break
-
-    const condition = parseSegunCaseCondition(state)
-    consume(state, TokenType.DosPuntos, "Se esperaba ':' después del valor o rango en Segun")
-
-    const body: StatementNode[] = []
-    while (!isAtEnd(state) && !check(state, TokenType.FinSegun) && !isSegunCaseHeaderStart(state)) {
-      skipSeparators(state)
-      if (isAtEnd(state) || check(state, TokenType.FinSegun) || isSegunCaseHeaderStart(state)) break
-      body.push(parseStatement(state))
-    }
-    cases.push({ type: 'SwitchCase', condition, body, line: token.line, column: token.column })
+function registerDeclarationName(
+  state: ParserState,
+  name: string,
+  declaredNames: Set<string>,
+  options?: ParseEnvironmentOptions,
+): void {
+  if (declaredNames.has(name)) {
+    throw parserError(state, peek(state), `Identificador redeclarado en el mismo alcance: '${name}'`)
   }
 
-  consume(state, TokenType.FinSegun, "Se esperaba 'FinSegun'")
-  return { type: 'Switch', expression, cases, line: token.line, column: token.column }
-}
-
-function parseSegunCaseCondition(state: ParserState): SwitchCaseCondition {
-  if (match(state, TokenType.Otro)) {
-    return { type: 'Default' }
+  if (options?.disallowShadowing && options.parentScopeNames?.has(name)) {
+    throw parserError(state, peek(state), `No se permite shadowing: '${name}' ya existe en el alcance externo`)
   }
 
-  if (match(state, TokenType.Mayor)) {
-    return { type: 'Comparison', operator: 'Mayor', value: parseExpression(state) }
-  }
-
-  if (match(state, TokenType.Menor)) {
-    return { type: 'Comparison', operator: 'Menor', value: parseExpression(state) }
-  }
-
-  if (match(state, TokenType.MayorIgual)) {
-    return { type: 'Comparison', operator: 'MayorIgual', value: parseExpression(state) }
-  }
-
-  if (match(state, TokenType.MenorIgual)) {
-    return { type: 'Comparison', operator: 'MenorIgual', value: parseExpression(state) }
-  }
-
-  return { type: 'ExactMatch', value: parseExpression(state) }
-}
-
-function isSegunCaseHeaderStart(state: ParserState): boolean {
-  if (check(state, TokenType.Otro)) return true
-  if (checkAny(state, [TokenType.Mayor, TokenType.Menor, TokenType.MayorIgual, TokenType.MenorIgual])) return true
-
-  if (checkAny(state, [TokenType.Entero, TokenType.Real, TokenType.Caracter, TokenType.Alfanumerico, TokenType.Verdadero, TokenType.Falso, TokenType.Identificador, TokenType.ParentesisIzquierdo])) {
-    if (state.current + 1 < state.tokens.length) {
-      return state.tokens[state.current + 1].type === TokenType.DosPuntos
-    }
-  }
-
-  return false
-}
-
-function parseRepetir(state: ParserState): DoWhileNode {
-  const token = previous(state)
-  skipSeparators(state)
-
-  const body = parseBlock(state, [TokenType.HastaQue])
-  consume(state, TokenType.HastaQue, "Se esperaba 'HastaQue' después del bloque Repetir")
-  const condition = parseExpression(state)
-
-  return { type: 'DoWhile', body, condition, line: token.line, column: token.column }
+  declaredNames.add(name)
 }
