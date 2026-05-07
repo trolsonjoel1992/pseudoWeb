@@ -1,6 +1,7 @@
 import type { BinaryExpressionNode, ExpressionNode, FunctionCallNode, UnaryExpressionNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
 import { assertDefinedValue, isTruthy, toComparable } from '../utils/valueUtils'
+import { ERROR_MESSAGES } from '../constants/errorMessages'
 import type { EvaluatorContext } from '../types/evaluatorContext'
 
 type ExpressionEvaluatorContext = Pick<EvaluatorContext, 'evaluateExpression' | 'lookup' | 'invokeFunction' | 'typeChecker'>
@@ -20,7 +21,7 @@ export async function evaluateExpressionNode(node: ExpressionNode, context: Expr
     case 'FunctionCall':
       return await evaluateFunctionCallExpression(node, context)
     default:
-      throw new RuntimeError(`Expresión desconocida: ${(node as { type: string }).type}`)
+      throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_EXPRESSION((node as { type: string }).type))
   }
 }
 
@@ -34,7 +35,7 @@ async function evaluateUnaryExpression(node: UnaryExpressionNode, context: Expre
     case 'No':
       return !isTruthy(right)
     default:
-      throw new RuntimeError(`Operador unario no soportado: ${node.operator}`)
+      throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_UNARY_OPERATOR(node.operator))
   }
 }
 
@@ -56,17 +57,17 @@ async function evaluateBinaryExpression(node: BinaryExpressionNode, context: Exp
       return leftNumber() * rightNumber()
     case 'Division':
       if (rightNumber() === 0) {
-        throw new RuntimeError('División por cero.')
+        throw new RuntimeError(ERROR_MESSAGES.DIVISION_BY_ZERO)
       }
       return leftNumber() / rightNumber()
     case 'Div':
       if (rightNumber() === 0) {
-        throw new RuntimeError('División entera por cero.')
+        throw new RuntimeError(ERROR_MESSAGES.INTEGER_DIVISION_BY_ZERO)
       }
       return Math.trunc(leftNumber() / rightNumber())
     case 'Mod':
       if (rightNumber() === 0) {
-        throw new RuntimeError('Módulo por cero.')
+        throw new RuntimeError(ERROR_MESSAGES.MODULO_BY_ZERO)
       }
       return leftNumber() % rightNumber()
     case 'Potencia':
@@ -88,7 +89,7 @@ async function evaluateBinaryExpression(node: BinaryExpressionNode, context: Exp
     case 'O':
       return isTruthy(left) || isTruthy(right)
     default:
-      throw new RuntimeError(`Operador binario no soportado: ${node.operator}`)
+      throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_BINARY_OPERATOR(node.operator))
   }
 }
 
