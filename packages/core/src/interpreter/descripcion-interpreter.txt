@@ -1,0 +1,345 @@
+Descripcion detallada de la carpeta interpreter
+
+1. Proposito general
+
+La carpeta src/interpreter contiene el nucleo de ejecucion del lenguaje pseudoWeb dentro del paquete core.
+Su responsabilidad es transformar el arbol de sintaxis abstracta generado por el parser en comportamiento
+real: crear y mantener el entorno de variables, registrar funciones y procedimientos, evaluar expresiones,
+ejecutar estructuras de control, manejar entrada y salida, y aplicar validaciones de tipos y seguridad.
+
+Esta carpeta funciona como una capa de orquestacion sobre varias piezas especializadas. En lugar de tener un
+solo archivo grande con toda la logica de interpretacion, el codigo esta dividido en piezas pequenas para
+separar responsabilidades y facilitar pruebas, mantenimiento y refactorizacion.
+
+2. Estructura general de la carpeta
+
+interpreter/
+  callableExecutor.ts
+  callableRegistry.ts
+  contextFactory.ts
+  environment.ts
+  environmentManager.ts
+  evaluator.ts
+  typeSystem.ts
+  constants/
+    errorMessages.ts
+  evaluators/
+    controlFlowEvaluator.ts
+    doWhileEvaluator.ts
+    expressionEvaluator.ts
+    ioEvaluator.ts
+    loopGuard.ts
+    switchEvaluator.ts
+  types/
+    evaluatorContext.ts
+  utils/
+    valueUtils.ts
+
+3. Descripcion archivo por archivo
+
+3.1 callableExecutor.ts
+
+Este archivo define la clase CallableExecutor, encargada de ejecutar funciones y procedimientos definidos
+dentro del ambiente del programa. Su trabajo principal es aislar la ejecucion de cada llamada para que tenga
+su propio entorno local y su propio registro de declaracion de callables.
+
+Responsabilidades principales:
+
+- Validar que la cantidad de argumentos recibidos coincida con la cantidad de parametros declarados.
+- Crear un nuevo entorno hijo para la llamada actual.
+- Crear un registro local de funciones y procedimientos visibles desde esa llamada.
+- Vincular los argumentos a los parametros, validando que cada valor sea compatible con su tipo.
+- Registrar declaraciones del bloque ambiente cuando la funcion o procedimiento las define.
+- Ejecutar el bloque principal de la funcion o procedimiento.
+- En el caso de funciones, recuperar y validar el valor de retorno antes de devolverlo.
+- Restaurar el entorno y el registro previos al terminar la llamada, incluso si ocurre un error.
+
+Tambien exporta el tipo CallableExecutorHost, que describe los metodos que el ejecutor necesita del evaluador
+principal para operar sin depender directamente de su implementacion concreta.
+
+3.2 callableRegistry.ts
+
+Este archivo implementa una tabla de registro para funciones y procedimientos. Mantiene dos mapas internos,
+uno para funciones y otro para procedimientos, con el objetivo de permitir consultas rapidas por nombre y de
+evitar colisiones entre nombres declarados.
+
+Responsabilidades principales:
+
+- Registrar todas las funciones declaradas en un bloque ambiente.
+- Registrar todos los procedimientos declarados en un bloque ambiente.
+- Detectar y rechazar nombres repetidos dentro de la misma tabla de simbolos de callables.
+- Responder si un nombre corresponde a una funcion, a un procedimiento o a cualquier callable.
+
+Su proposito es actuar como indice de resolucion para llamadas, permitiendo que el evaluador determine si un
+identificador debe ejecutarse como funcion o como procedimiento.
+
+3.3 contextFactory.ts
+
+Este archivo crea instancias de EvaluatorContext. El contexto es una vista adaptada del evaluador principal que
+se pasa a los subevaluadores especializados para que puedan usar operaciones de alto nivel sin conocer la
+clase completa del motor de ejecucion.
+
+Responsabilidades principales:
+
+- Exponer metodos para evaluar expresiones y bloques.
+- Exponer acceso a variables, tipos y asignaciones.
+- Exponer entrada, salida e invocacion de funciones.
+- Exponer el entorno actual y el type checker mediante getters.
+
+La factory actua como capa de adaptacion entre el Evaluator y los modulos especializados de evaluacion.
+
+3.4 environment.ts
+
+Este archivo define la clase Environment, que representa la tabla de simbolos en tiempo de ejecucion.
+Es uno de los componentes mas importantes del interprete porque guarda valores, tipos y constantes, y ademas
+permite encadenar entornos padre-hijo para soportar alcance lexicografico o local.
+
+Responsabilidades principales:
+
+- Declarar variables con valor inicial, tipo opcional y marca de constante.
+- Asignar nuevos valores respetando la regla de constante inmutable.
+- Buscar valores recorriendo la cadena de entornos si la variable no existe localmente.
+- Buscar tipos asociados a variables a lo largo de la jerarquia de entornos.
+- Saber si una variable existe en el entorno actual o en algun padre.
+- Saber si un nombre corresponde a una constante.
+- Generar un snapshot consolidado de los valores visibles en el entorno actual.
+
+La clase usa tres colecciones internas:
+
+- values: guarda el valor de cada variable.
+- types: guarda el DataType asociado.
+- constants: guarda los nombres marcados como inmutables.
+
+3.5 environmentManager.ts
+
+Este archivo administra una pila de entornos. Su proposito es centralizar el control de entrada y salida de
+contextos de ejecucion, especialmente durante llamadas a funciones o procedimientos.
+
+Responsabilidades principales:
+
+- Mantener una pila con el entorno raiz y los entornos anidados.
+- Crear nuevos entornos al entrar a una llamada o bloque que requiera alcance nuevo.
+- Eliminar el entorno actual cuando termina una llamada.
+- Exponer el entorno activo mediante getCurrent.
+
+Este componente complementa a Environment, pero no almacena variables por si mismo; solo coordina la pila de
+ambientes para la ejecucion.
+
+3.6 evaluator.ts
+
+Este archivo contiene la clase Evaluator, que es la fachada principal del interprete. Desde aqui se coordina
+todo el ciclo de ejecucion: registro de declaraciones, evaluacion de sentencias, resolucion de expresiones,
+invocacion de funciones y procedimientos, y conexion con los subevaluadores especializados.
+
+Responsabilidades principales:
+
+- Inicializar el entorno raiz, el registry de callables, el type checker y el ambiente de ejecucion.
+- Registrar variables, constantes, funciones y procedimientos definidos en el bloque ambiente del programa.
+- Recorrer y ejecutar secuencialmente las sentencias del bloque principal.
+- Delegar la evaluacion de expresiones a expressionEvaluator.ts.
+- Delegar el control de flujo a controlFlowEvaluator.ts.
+- Delegar las instrucciones de entrada/salida a ioEvaluator.ts.
+- Delegar la instruccion Segun a switchEvaluator.ts.
+- Delegar la instruccion Repetir...Hasta que a doWhileEvaluator.ts.
+- Gestionar invocaciones internas de funciones y procedimientos, incluyendo el caso especial de REDOND.
+
+Este archivo es el punto de ensamblaje del interprete. Aunque contiene logica propia, su diseno ya separa la
+mayor parte del comportamiento real en modulos mas pequenos.
+
+3.7 typeSystem.ts
+
+Este archivo define la clase TypeChecker, que centraliza la validacion y coercion de tipos en tiempo de
+ejecucion. Su funcion es evitar duplicacion de reglas entre el evaluador, la lectura de datos y las
+operaciones especificas de control.
+
+Responsabilidades principales:
+
+- Verificar que un valor coincida con el tipo esperado de una variable, parametro o retorno.
+- Resolver el tipo dinamico de un valor en tiempo de ejecucion.
+- Convertir valores de entrada a tipos esperados cuando es seguro hacerlo.
+- Determinar si una asignacion es valida.
+- Comprobar que una variable exista antes de usarla.
+- Validar que un valor numerico sea realmente numerico y finito.
+- Verificar compatibilidad de tipos en la evaluacion de Segun.
+- Resolver el tipo de valores usados en casos de Segun.
+
+Tambien encapsula reglas especificas del lenguaje, por ejemplo:
+
+- Entero requiere numeros enteros.
+- Real acepta numeros finitos.
+- Caracter acepta cadenas de longitud 1.
+- Alfanumerico acepta cadenas de texto.
+- Logico acepta booleanos y, en coercion, cadenas como verdadero/falso o true/false.
+
+3.8 constants/errorMessages.ts
+
+Este archivo centraliza mensajes de error reutilizables. Su objetivo es evitar cadenas dispersas por el codigo
+y mantener consistencia en los errores producidos por el interprete.
+
+Contiene mensajes para:
+
+- Variable no declarada.
+- Exceso de iteraciones en bucles.
+- Numero invalido.
+- Tipos no soportados en Segun.
+- Restricciones de comparacion numerica en Segun.
+- Incompatibilidad de tipos entre la expresion y el caso en Segun.
+
+El uso de funciones para algunos mensajes permite interpolar nombres de variables o tipos de bucle de forma
+consistente.
+
+3.9 evaluators/controlFlowEvaluator.ts
+
+Este archivo contiene evaluadores especializados para estructuras de control generales: Si, Mientras y Para.
+Su enfoque es operar sobre el contexto del interprete sin tener que conocer la clase principal completa.
+
+Responsabilidades principales:
+
+- evaluateIfNode: evaluar la condicion, decidir entre thenBranch y elseBranch, y ejecutar el bloque correcto.
+- evaluateWhileNode: repetir la ejecucion mientras la condicion sea verdadera.
+- evaluateForNode: calcular inicio, fin y paso, iterar en la direccion correcta y ejecutar el cuerpo.
+- bindLoopVariable: asignar o declarar la variable de control del bucle segun exista previamente.
+
+Tambien incorpora un guard de bucles para evitar ejecuciones infinitas o excesivamente largas.
+
+3.10 evaluators/doWhileEvaluator.ts
+
+Este archivo implementa la evaluacion de la estructura Repetir...Hasta que. A diferencia de Mientras, el
+cuerpo se ejecuta al menos una vez antes de comprobar la condicion.
+
+Responsabilidades principales:
+
+- Ejecutar primero el cuerpo del bucle.
+- Evaluar luego la condicion de salida.
+- Romper la ejecucion cuando la condicion se vuelve verdadera.
+- Aplicar el guard de iteraciones para proteger contra bucles infinitos.
+
+3.11 evaluators/expressionEvaluator.ts
+
+Este archivo resuelve las expresiones del lenguaje. Es uno de los motores mas importantes porque convierte el
+arbol de expresion en valores concretos que luego usan asignaciones, condiciones, llamadas y calculos.
+
+Responsabilidades principales:
+
+- Evaluar literales devolviendo su valor directo.
+- Resolver identificadores consultando el entorno.
+- Evaluar agrupaciones delegando en la expresion interna.
+- Evaluar expresiones unarias.
+- Evaluar expresiones binarias.
+- Evaluar llamadas a funciones dentro de expresiones.
+
+Operadores soportados en las expresiones binarias:
+
+- Suma, Resta, Multiplicacion, Division, Div, Mod, Potencia.
+- Igual y Distinto.
+- Menor, MenorIgual, Mayor y MayorIgual.
+- Y y O.
+
+El archivo tambien valida casos de error comunes, como division por cero o uso de operadores no soportados.
+
+3.12 evaluators/ioEvaluator.ts
+
+Este archivo maneja entrada y salida. Su objetivo es aislar la logica de lectura y escritura para que el
+evaluador principal no tenga que conocer los detalles de formateo o coercion de valores.
+
+Responsabilidades principales:
+
+- evaluateWriteNode: evaluar cada expresion de salida, convertir su valor a texto y enviarlo al canal de salida.
+- evaluateReadNode: solicitar valores para variables, verificar que existan y convertir la entrada al tipo
+  esperado cuando corresponda.
+
+Tambien utiliza el type checker para asegurar que la entrada del usuario sea compatible con el tipo de la
+variable antes de asignarla.
+
+3.13 evaluators/loopGuard.ts
+
+Este archivo implementa una proteccion contra bucles excesivos. Su funcion es contar iteraciones y lanzar un
+error cuando se supera un limite seguro.
+
+Responsabilidades principales:
+
+- Llevar un contador de iteraciones.
+- Comparar el contador con un limite maximo fijo.
+- Lanzar un RuntimeError con un mensaje centralizado cuando se excede ese limite.
+- Ofrecer una funcion helper createLoopGuard para crear instancias nuevas.
+
+Este componente protege al interprete contra programas que podrian quedar atrapados en bucles infinitos o muy
+largos.
+
+3.14 evaluators/switchEvaluator.ts
+
+Este archivo implementa la evaluacion de Segun. Su logica compara el valor de la expresion principal con cada
+caso disponible y ejecuta el primer bloque que coincide.
+
+Responsabilidades principales:
+
+- Evaluar la expresion principal de Segun.
+- Determinar su tipo runtime.
+- Iterar por los casos y decidir si coinciden por igualdad exacta o por comparacion.
+- Validar compatibilidad entre tipos del caso y de la expresion.
+- Ejecutar el cuerpo del primer caso que coincida.
+
+Soporta tres modalidades de caso:
+
+- Default: siempre coincide.
+- ExactMatch: compara por igualdad estricta.
+- Comparison: compara mediante operadores como Mayor, Menor, MayorIgual y MenorIgual.
+
+3.15 types/evaluatorContext.ts
+
+Este archivo define la interfaz EvaluatorContext, que describe el contrato que necesitan los subevaluadores.
+Es un tipo de infraestructura que permite desacoplar la implementacion concreta del Evaluator de la logica
+especializada en modulos secundarios.
+
+Incluye capacidades para:
+
+- Evaluar expresiones y bloques.
+- Solicitar entrada.
+- Consultar existencia de variables y su tipo.
+- Asignar o declarar variables.
+- Enviar salida.
+- Resolver identificadores directamente.
+- Invocar funciones.
+- Acceder al entorno actual.
+- Acceder al type checker.
+
+3.16 utils/valueUtils.ts
+
+Este archivo agrupa utilidades pequenas que se reutilizan en distintas partes del interprete.
+
+Funciones principales:
+
+- stringifyValue: convierte valores a texto para salida, tratando null y undefined como cadena vacia.
+- isTruthy: aplica una conversion booleana simple de JavaScript.
+- assertDefinedValue: valida que un valor no sea null ni undefined antes de usarlo.
+- toNumber: asegura que el valor sea un numero finito y utilizable.
+- toComparable: valida que un valor pueda compararse como numero y lo retorna; si no, lanza error.
+
+Estas funciones ayudan a mantener uniforme la logica de validacion de valores a lo largo del interprete.
+
+4. Relacion entre archivos
+
+La secuencia de trabajo tipica dentro de esta carpeta es la siguiente:
+
+- evaluator.ts recibe el programa ya parseado.
+- callableRegistry.ts registra las declaraciones del ambiente.
+- environment.ts guarda variables, constantes y tipos.
+- environmentManager.ts administra los cambios temporales de entorno.
+- contextFactory.ts construye un contexto simplificado para los evaluadores especializados.
+- expressionEvaluator.ts resuelve expresiones.
+- controlFlowEvaluator.ts, doWhileEvaluator.ts y switchEvaluator.ts ejecutan estructuras de control.
+- ioEvaluator.ts maneja lectura y escritura.
+- typeSystem.ts valida compatibilidad y coercion de tipos.
+- valueUtils.ts y errorMessages.ts ofrecen soporte comun.
+
+En conjunto, esta carpeta implementa el interprete ejecutivo del lenguaje, pero con una division clara entre
+orquestacion, estado, validacion y evaluacion de nodos.
+
+5. Observacion de arquitectura
+
+La estructura muestra una refactorizacion orientada a modularidad. El archivo evaluator.ts sigue siendo la
+fachada principal, pero la logica real ya esta repartida en modulos especializados. Esto reduce el tamaño de la
+clase central, hace mas facil escribir pruebas unitarias por comportamiento y permite ajustar reglas del
+lenguaje sin tocar todo el motor a la vez.
+
+Fin del documento.

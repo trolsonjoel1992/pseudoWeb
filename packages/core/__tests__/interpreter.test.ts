@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Environment } from '../src/interpreter/environment'
-import { Evaluator } from '../src/interpreter/evaluator'
+import { Evaluator } from '../src/interpreter/orchestrator'
 import { Lexer } from '../src/lexer/lexer'
 import { Parser } from '../src/parser/parser'
 

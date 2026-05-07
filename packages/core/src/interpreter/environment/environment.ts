@@ -1,5 +1,14 @@
-import { RuntimeError } from "../errors";
-import type { DataType } from "../parser/ast";
+import { RuntimeError } from "../../errors";
+import type { DataType } from "../../parser/ast";
+
+/**
+ * Local Errors - Dynamic environment/variable error messages
+ * These messages require interpolation with variable names, so they live locally
+ */
+const Errors = {
+  CANNOT_REASSIGN_CONSTANT: (name: string) => `No se puede reasignar la constante '${name}'.`,
+  VARIABLE_NOT_DEFINED: (name: string) => `Variable no definida '${name}'.`,
+} as const
 
 // Este archivo se encargará de la gestión de la tabla de símbolos (memoria) 
 // y la validación de rangos durante la ejecución del pseudocódigo.
@@ -39,7 +48,7 @@ export class Environment {
     assign(name: string, value: unknown): void {
         if (this.values.has(name)) {
             if (this.constants.has(name)) {
-                throw new RuntimeError(`No se puede reasignar la constante '${name}'.`);
+                throw new RuntimeError(Errors.CANNOT_REASSIGN_CONSTANT(name));
             }
             this.values.set(name, value);
             return;
@@ -50,7 +59,7 @@ export class Environment {
             return;
         }
 
-        throw new RuntimeError(`Variable no definida '${name}'.`);
+        throw new RuntimeError(Errors.VARIABLE_NOT_DEFINED(name));
     }
 
     /**
@@ -69,7 +78,7 @@ export class Environment {
             return this.enclosing.lookup(name);
         }
 
-        throw new RuntimeError(`Variable no definida '${name}'.`);
+        throw new RuntimeError(Errors.VARIABLE_NOT_DEFINED(name));
     }
 
     lookupType(name: string): DataType | null {

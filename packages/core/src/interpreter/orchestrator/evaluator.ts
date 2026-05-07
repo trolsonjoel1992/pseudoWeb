@@ -2,32 +2,23 @@ import type {
   ActionNode,
   AssignmentNode,
   CallStatementNode,
-  DoWhileNode,
   EnvironmentBlockNode,
   ExpressionNode,
-  ForNode,
-  IfNode,
-  ReadNode,
   StatementNode,
-  SwitchNode,
   VariableDeclarationNode,
-  WhileNode,
-  WriteNode,
-} from '../parser/ast'
-import { RuntimeError } from '../errors'
-import { Environment } from './environment'
-import { TypeChecker } from './typeSystem'
-import { CallableRegistry } from './callableRegistry'
-import { ContextFactory } from './contextFactory'
-import { CallableExecutor } from './callableExecutor'
-import { EnvironmentManager } from './environmentManager'
-import type { EvaluatorContext } from './types/evaluatorContext'
-
-import { evaluateExpressionNode } from './evaluators/expressionEvaluator'
-import { evaluateForNode, evaluateIfNode, evaluateWhileNode } from './evaluators/controlFlowEvaluator'
-import { evaluateReadNode, evaluateWriteNode } from './evaluators/ioEvaluator'
-import { evaluateSwitchNode } from './evaluators/switchEvaluator'
-import { evaluateDoWhileNode } from './evaluators/doWhileEvaluator'
+} from '../../parser/ast'
+import { RuntimeError } from '../../errors'
+import { ERROR_MESSAGES } from '../constants/errorMessages'
+import { Environment } from '../environment/environment'
+import { EnvironmentManager } from '../environment/environmentManager'
+import { TypeChecker } from '../types/index'
+import { CallableRegistry } from '../callables/callableRegistry'
+import { CallableExecutor } from '../callables/callableExecutor'
+import type { EvaluatorContext } from '../types/evaluatorContext'
+import { BuiltinRegistry, initBuiltins } from '../builtins/index'
+import { CallableInvoker } from '../callables/callableInvoker'
+import { evaluateExpressionNode } from '../evaluators/expressionEvaluator'
+import { StatementDispatcher } from './statementDispatcher'
 
 export interface EvaluationResult {
   output: string[]
@@ -44,16 +35,20 @@ export class Evaluator {
   private readonly requestInput: InputRequestHandler
   private readonly pushOutput: OutputHandler
   private registry: CallableRegistry = new CallableRegistry()
+  private builtinRegistry: BuiltinRegistry
   private typeChecker: TypeChecker = new TypeChecker()
   private readonly environmentManager: EnvironmentManager
   private readonly callableExecutor: CallableExecutor
   private readonly context: EvaluatorContext
+  private readonly dispatcher: StatementDispatcher
+  private readonly invoker: CallableInvoker
 
   constructor(environment: Environment, requestInput: InputRequestHandler = async () => null, pushOutput?: OutputHandler) {
     this.environment = environment
     this.requestInput = requestInput
     this.pushOutput = pushOutput ?? ((line) => this.output.push(line))
     this.environmentManager = new EnvironmentManager(environment)
+    this.builtinRegistry = initBuiltins()
     this.callableExecutor = new CallableExecutor(
       {
         getEnvironment: () => this.environment,
@@ -70,29 +65,36 @@ export class Evaluator {
       this.typeChecker,
       this.environmentManager,
     )
-    this.context = new ContextFactory({
+    // ATENCIÓN: No instancies invoker aún — se necesita callableExecutor primero
+    // El invoker se instancia después del constructor (ver línea posterior a callableExecutor)
+    const self = this
+    this.context = {
       evaluateExpression: (node) => this.evaluateExpression(node),
       evaluateBlock: (nodes) => this.evaluateBlock(nodes),
+      requestInput: (prompt) => this.requestInput(prompt),
       hasVariable: (name) => this.environment.has(name),
-      lookupVariable: (name) => this.environment.lookup(name),
       lookupVariableType: (name) => this.environment.lookupType(name),
       assignVariable: (name, value) => this.environment.assign(name, value),
       defineVariable: (name, value, type, isConstant) => this.environment.define(name, value, type, isConstant),
-      requestInput: (prompt) => this.requestInput(prompt),
       pushOutput: (line) => this.pushOutput(line),
-      invokeFunction: (name, args) => this.invokeFunction(name, args),
-      getEnvironment: () => this.environment,
-      getTypeChecker: () => this.typeChecker,
-    }).create()
+      lookup: (name) => this.environment.lookup(name),
+      invokeFunction: (name, args) => this.invoker!.invokeFunction(name, args),
+      get environment() {
+        return self.environment
+      },
+      get typeChecker() {
+        return self.typeChecker
+      },
+    }
+    this.dispatcher = new StatementDispatcher(this.context, (node) => this.evaluateCoreStatement(node))
+    this.invoker = new CallableInvoker(this.builtinRegistry, this.registry, this.callableExecutor)
   }
 
   public async evaluate(action: ActionNode): Promise<EvaluationResult> {
     this.registry.registerFromEnvironment(action.ambiente)
     this.initializeEnvironmentDeclarations(action.ambiente)
 
-    for (const statement of action.proceso) {
-      await this.evaluateStatement(statement)
-    }
+    await this.dispatcher.dispatchBlock(action.proceso)
 
     return {
       output: [...this.output],
@@ -112,7 +114,7 @@ export class Evaluator {
     }
   }
 
-  private async evaluateStatement(node: StatementNode): Promise<void> {
+  private async evaluateCoreStatement(node: VariableDeclarationNode | AssignmentNode | CallStatementNode): Promise<void> {
     switch (node.type) {
       case 'VariableDeclaration':
         this.evaluateVariableDeclaration(node)
@@ -123,29 +125,8 @@ export class Evaluator {
       case 'CallStatement':
         await this.evaluateCallStatement(node)
         return
-      case 'Write':
-        await this.evaluateWrite(node)
-        return
-      case 'Read':
-        await this.evaluateRead(node)
-        return
-      case 'If':
-        await this.evaluateIf(node)
-        return
-      case 'While':
-        await this.evaluateWhile(node)
-        return
-      case 'For':
-        await this.evaluateFor(node)
-        return
-      case 'Switch':
-        await this.evaluateSwitch(node as SwitchNode)
-        return
-      case 'DoWhile':
-        await this.evaluateDoWhile(node as DoWhileNode)
-        return
       default:
-        throw new RuntimeError(`Nodo de sentencia desconocido: ${(node as { type: string }).type}`)
+        throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_STATEMENT_NODE((node as { type: string }).type))
     }
   }
 
@@ -174,89 +155,23 @@ export class Evaluator {
     }
 
     if (this.registry.isProcedure(node.call.name)) {
-      await this.invokeProcedure(node.call.name, args)
+      await this.invoker.invokeProcedure(node.call.name, args)
       return
     }
 
     if (this.registry.isFunction(node.call.name)) {
-      await this.invokeFunction(node.call.name, args)
+      await this.invoker.invokeFunction(node.call.name, args)
       return
     }
 
-    throw new RuntimeError(`No existe una función o procedimiento llamado '${node.call.name}'.`)
-  }
-
-  private async evaluateWrite(node: WriteNode): Promise<void> {
-    await evaluateWriteNode(node, this.context)
-  }
-
-  private async evaluateRead(node: ReadNode): Promise<void> {
-    await evaluateReadNode(node, this.context)
-  }
-
-  private async evaluateIf(node: IfNode): Promise<void> {
-    await evaluateIfNode(node, this.context)
-  }
-
-  private async evaluateWhile(node: WhileNode): Promise<void> {
-    await evaluateWhileNode(node, this.context)
-  }
-
-  private async evaluateFor(node: ForNode): Promise<void> {
-    await evaluateForNode(node, this.context)
+    throw new RuntimeError(ERROR_MESSAGES.NO_FUNCTION_OR_PROCEDURE(node.call.name))
   }
 
   private async evaluateBlock(statements: StatementNode[]): Promise<void> {
-    for (const statement of statements) {
-      await this.evaluateStatement(statement)
-    }
+    await this.dispatcher.dispatchBlock(statements)
   }
 
   private async evaluateExpression(node: ExpressionNode): Promise<unknown> {
     return await evaluateExpressionNode(node, this.context)
   }
-
-  private async invokeFunction(name: string, args: unknown[]): Promise<unknown> {
-    if (name.toLowerCase() === 'redond') {
-      if (args.length !== 1) {
-        throw new RuntimeError("REDOND requiere exactamente 1 argumento.")
-      }
-      const value = args[0]
-      if (typeof value !== 'number' || !Number.isFinite(value)) {
-        throw new RuntimeError('REDOND solo acepta un argumento numérico.')
-      }
-      return Math.round(value)
-    }
-
-    const declaration = this.registry.getFunction(name)
-    if (!declaration) {
-      if (this.registry.isProcedure(name)) {
-        throw new RuntimeError(`'${name}' es un procedimiento y no puede usarse dentro de una expresión.`)
-      }
-      throw new RuntimeError(`No existe una función llamada '${name}'.`)
-    }
-
-    return await this.callableExecutor.executeFunction(declaration, args)
-  }
-
-  private async invokeProcedure(name: string, args: unknown[]): Promise<void> {
-    const declaration = this.registry.getProcedure(name)
-    if (!declaration) {
-      if (this.registry.isFunction(name)) {
-        throw new RuntimeError(`'${name}' es una función y debe usarse dentro de una expresión.`)
-      }
-      throw new RuntimeError(`No existe un procedimiento llamado '${name}'.`)
-    }
-
-    await this.callableExecutor.executeProcedure(declaration, args)
-  }
-
-  private async evaluateSwitch(node: SwitchNode): Promise<void> {
-    await evaluateSwitchNode(node, this.context)
-  }
-
-  private async evaluateDoWhile(node: DoWhileNode): Promise<void> {
-    await evaluateDoWhileNode(node, this.context)
-  }
 }
-

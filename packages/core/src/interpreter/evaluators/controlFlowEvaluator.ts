@@ -1,6 +1,7 @@
 import type { ForNode, IfNode, WhileNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
 import { assertDefinedValue, isTruthy } from '../utils/valueUtils'
+import { ERROR_MESSAGES } from '../constants/errorMessages'
 import { createLoopGuard } from './loopGuard'
 import type { EvaluatorContext } from '../types/evaluatorContext'
 
@@ -48,7 +49,7 @@ export async function evaluateForNode(node: ForNode, context: ControlFlowEvaluat
   const guard = createLoopGuard()
 
   if (step === 0) {
-    throw new RuntimeError('El paso del Para no puede ser cero.')
+    throw new RuntimeError(ERROR_MESSAGES.FOR_STEP_ZERO)
   }
 
   if (step > 0) {

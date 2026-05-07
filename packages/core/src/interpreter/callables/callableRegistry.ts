@@ -1,5 +1,13 @@
-import type { FunctionDeclarationNode, ProcedureDeclarationNode, EnvironmentBlockNode } from '../parser/ast'
-import { RuntimeError } from '../errors'
+import type { FunctionDeclarationNode, ProcedureDeclarationNode, EnvironmentBlockNode } from '../../parser/ast'
+import { RuntimeError } from '../../errors'
+
+/**
+ * Local Errors - Dynamic callable registry error messages
+ * These messages require interpolation with callable names, so they live locally
+ */
+const Errors = {
+  DUPLICATE_CALLABLE: (name: string) => `El nombre '${name}' ya fue declarado en Ambiente.`,
+} as const
 
 export class CallableRegistry {
   private functions: Map<string, FunctionDeclarationNode> = new Map()
@@ -8,14 +16,14 @@ export class CallableRegistry {
   public registerFromEnvironment(ambiente: EnvironmentBlockNode): void {
     for (const declaration of ambiente.functions) {
       if (this.functions.has(declaration.name) || this.procedures.has(declaration.name)) {
-        throw new RuntimeError(`El nombre '${declaration.name}' ya fue declarado en Ambiente.`)
+        throw new RuntimeError(Errors.DUPLICATE_CALLABLE(declaration.name))
       }
       this.functions.set(declaration.name, declaration)
     }
 
     for (const declaration of ambiente.procedures) {
       if (this.functions.has(declaration.name) || this.procedures.has(declaration.name)) {
-        throw new RuntimeError(`El nombre '${declaration.name}' ya fue declarado en Ambiente.`)
+        throw new RuntimeError(Errors.DUPLICATE_CALLABLE(declaration.name))
       }
       this.procedures.set(declaration.name, declaration)
     }

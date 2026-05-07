@@ -3,8 +3,8 @@ import type {
   ExpressionNode,
   StatementNode,
 } from '../../parser/ast'
-import type { Environment } from '../environment'
-import type { TypeChecker } from '../typeSystem'
+import type { Environment } from '../environment/environment'
+import type { TypeChecker } from '../types/index'
 
 export interface EvaluatorContext {
   evaluateExpression: (node: ExpressionNode) => Promise<unknown>

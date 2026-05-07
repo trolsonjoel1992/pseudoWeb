@@ -1,10 +1,11 @@
-import type { FunctionDeclarationNode, ProcedureDeclarationNode, StatementNode } from '../parser/ast'
-import { RuntimeError } from '../errors'
+import type { FunctionDeclarationNode, ProcedureDeclarationNode, StatementNode } from '../../parser/ast'
+import { RuntimeError } from '../../errors'
+import { ERROR_MESSAGES } from '../constants/errorMessages'
 import { CallableRegistry } from './callableRegistry'
-import { Environment } from './environment'
-import { EnvironmentManager } from './environmentManager'
-import type { TypeChecker } from './typeSystem'
-import { assertDefinedValue } from './utils/valueUtils'
+import type { Environment } from '../environment/environment'
+import { EnvironmentManager } from '../environment/environmentManager'
+import type { TypeChecker } from '../types/index'
+import { assertDefinedValue } from '../utils/valueUtils'
 
 export type CallableExecutorHost = {
   getEnvironment: () => Environment
@@ -101,8 +102,6 @@ export class CallableExecutor {
       return
     }
 
-    throw new RuntimeError(
-      `Cantidad de argumentos inválida en '${name}'. Esperados: ${expected}, recibidos: ${received}.`,
-    )
+    throw new RuntimeError(ERROR_MESSAGES.INVALID_ARGUMENT_COUNT(name, expected, received))
   }
 }
