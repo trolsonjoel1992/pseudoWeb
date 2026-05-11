@@ -2,9 +2,7 @@ import type { BinaryExpressionNode, ExpressionNode, FunctionCallNode, UnaryExpre
 import { RuntimeError } from '../../errors'
 import { assertDefinedValue, isTruthy, toComparable } from '../utils/valueUtils'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
-import type { EvaluatorContext } from '../types/evaluatorContext'
-
-type ExpressionEvaluatorContext = Pick<EvaluatorContext, 'evaluateExpression' | 'lookup' | 'invokeFunction' | 'typeChecker'>
+import type { ExpressionEvaluatorContext } from '../types/evaluatorContextContracts'
 
 export async function evaluateExpressionNode(node: ExpressionNode, context: ExpressionEvaluatorContext): Promise<unknown> {
   switch (node.type) {

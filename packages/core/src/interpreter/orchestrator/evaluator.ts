@@ -17,6 +17,7 @@ import { CallableExecutor } from '../callables/callableExecutor'
 import type { EvaluatorContext } from '../types/evaluatorContext'
 import { BuiltinRegistry, initBuiltins } from '../builtins/index'
 import { CallableInvoker } from '../callables/callableInvoker'
+import { CallableResolver } from '../callables/callableResolver'
 import { evaluateExpressionNode } from '../evaluators/expressionEvaluator'
 import { StatementDispatcher } from './statementDispatcher'
 
@@ -35,8 +36,8 @@ export class Evaluator {
   private readonly requestInput: InputRequestHandler
   private readonly pushOutput: OutputHandler
   private registry: CallableRegistry = new CallableRegistry()
-  private builtinRegistry: BuiltinRegistry
-  private typeChecker: TypeChecker = new TypeChecker()
+  private readonly builtinRegistry: BuiltinRegistry
+  private readonly typeChecker: TypeChecker = new TypeChecker()
   private readonly environmentManager: EnvironmentManager
   private readonly callableExecutor: CallableExecutor
   private readonly context: EvaluatorContext
@@ -65,8 +66,9 @@ export class Evaluator {
       this.typeChecker,
       this.environmentManager,
     )
-    // ATENCIÓN: No instancies invoker aún — se necesita callableExecutor primero
-    // El invoker se instancia después del constructor (ver línea posterior a callableExecutor)
+    const callableResolver = new CallableResolver(this.builtinRegistry, this.registry)
+    this.invoker = new CallableInvoker(callableResolver, this.callableExecutor)
+
     const self = this
     this.context = {
       evaluateExpression: (node) => this.evaluateExpression(node),
@@ -78,7 +80,7 @@ export class Evaluator {
       defineVariable: (name, value, type, isConstant) => this.environment.define(name, value, type, isConstant),
       pushOutput: (line) => this.pushOutput(line),
       lookup: (name) => this.environment.lookup(name),
-      invokeFunction: (name, args) => this.invoker!.invokeFunction(name, args),
+      invokeFunction: (name, args) => this.invoker.invokeFunction(name, args),
       get environment() {
         return self.environment
       },
@@ -87,7 +89,6 @@ export class Evaluator {
       },
     }
     this.dispatcher = new StatementDispatcher(this.context, (node) => this.evaluateCoreStatement(node))
-    this.invoker = new CallableInvoker(this.builtinRegistry, this.registry, this.callableExecutor)
   }
 
   public async evaluate(action: ActionNode): Promise<EvaluationResult> {

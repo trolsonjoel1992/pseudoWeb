@@ -1,6 +1,6 @@
 import type { DataType } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
-import { TypeRules } from './typeRules'
+import { resolveSwitchValueType } from './typeValidator'
 
 /**
  * Local Errors - Dynamic type coercion error messages
@@ -18,8 +18,6 @@ const Errors = {
  * Converts values between types during input and assignment
  */
 export class TypeCoercer {
-  private typeRules = new TypeRules()
-
   /**
    * Coerce an input value to match an expected type
    * Supports string→number parsing and boolean conversion
@@ -65,5 +63,9 @@ export class TypeCoercer {
     }
 
     throw new RuntimeError(Errors.INCOMPATIBLE_VALUE(variableName, expectedType))
+  }
+
+  public resolveSwitchValueType(value: unknown): 'number' | 'string' | 'boolean' {
+    return resolveSwitchValueType(value)
   }
 }

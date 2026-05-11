@@ -3,14 +3,15 @@ export const ERROR_MESSAGES = {
   VARIABLE_NOT_FOUND: (name: string) => `Variable '${name}' no declarada.`,
 
   // Loop errors
-  LOOP_EXCESS: (loopType: 'while' | 'for' | 'do-while' | 'generic') => {
+  LOOP_EXCESS: (loopType: 'while' | 'for' | 'do-while' | 'generic', limit?: number) => {
     const labels = {
       while: 'Mientras',
       for: 'Para',
       'do-while': 'Repetir',
       generic: 'generico',
     } as const
-    return `Bucle ${labels[loopType]} excedió el límite de seguridad.`
+    const limitStr = limit ? ` (> ${limit} iteraciones)` : ''
+    return `Bucle ${labels[loopType]} excedió el límite de seguridad${limitStr}.`
   },
   FOR_STEP_ZERO: 'El paso del Para no puede ser cero.',
 

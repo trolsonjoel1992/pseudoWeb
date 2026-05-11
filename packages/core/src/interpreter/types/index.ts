@@ -5,5 +5,11 @@
 
 export { TypeValidator } from './typeValidator'
 export { TypeCoercer } from './typeCoercer'
-export { TypeRules } from './typeRules'
 export { TypeChecker } from './typeChecker'
+export type {
+	ExpressionEvaluatorContext,
+	IOEvaluatorContext,
+	ControlFlowEvaluatorContext,
+	SwitchEvaluatorContext,
+	DoWhileEvaluatorContext,
+} from './evaluatorContextContracts'

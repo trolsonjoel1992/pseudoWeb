@@ -1,42 +1,8 @@
-import type { ForNode, IfNode, WhileNode } from '../../parser/ast'
+import type { ForNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
-import { assertDefinedValue, isTruthy } from '../utils/valueUtils'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import { createLoopGuard } from './loopGuard'
-import type { EvaluatorContext } from '../types/evaluatorContext'
-
-type ControlFlowEvaluatorContext = Pick<
-  EvaluatorContext,
-  'evaluateExpression' | 'evaluateBlock' | 'hasVariable' | 'assignVariable' | 'defineVariable' | 'typeChecker'
->
-
-export async function evaluateIfNode(node: IfNode, context: ControlFlowEvaluatorContext): Promise<void> {
-  const condition = await context.evaluateExpression(node.condition)
-  assertDefinedValue(condition, 'la condición de Si')
-
-  if (isTruthy(condition)) {
-    await context.evaluateBlock(node.thenBranch)
-    return
-  }
-
-  await context.evaluateBlock(node.elseBranch)
-}
-
-export async function evaluateWhileNode(node: WhileNode, context: ControlFlowEvaluatorContext): Promise<void> {
-  const guard = createLoopGuard()
-
-  while (true) {
-    const condition = await context.evaluateExpression(node.condition)
-    assertDefinedValue(condition, 'la condición de Mientras')
-
-    if (!isTruthy(condition)) {
-      return
-    }
-
-    guard.checkIteration('while')
-    await context.evaluateBlock(node.body)
-  }
-}
+import type { ControlFlowEvaluatorContext } from '../types/evaluatorContextContracts'
 
 export async function evaluateForNode(node: ForNode, context: ControlFlowEvaluatorContext): Promise<void> {
   const start = context.typeChecker.assertNumberType(await context.evaluateExpression(node.start), 'inicio de Para')
