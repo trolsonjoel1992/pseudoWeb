@@ -1,5 +1,7 @@
 export { evaluateExpressionNode } from './expressionEvaluator'
-export { evaluateIfNode, evaluateWhileNode, evaluateForNode } from './controlFlowEvaluator'
+export { evaluateIfNode } from './ifEvaluator'
+export { evaluateWhileNode } from './whileEvaluator'
+export { evaluateForNode } from './forEvaluator'
 export { evaluateReadNode, evaluateWriteNode } from './ioEvaluator'
 export { evaluateSwitchNode } from './switchEvaluator'
 export { evaluateDoWhileNode } from './doWhileEvaluator'

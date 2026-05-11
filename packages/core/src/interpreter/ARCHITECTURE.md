@@ -1,185 +1,365 @@
 # Interpreter Architecture
 
-## Overview
+## Estructura de Carpetas
 
-The interpreter module has been refactored from a flat, monolithic structure into a well-organized, domain-based architecture with clear separation of concerns.
+```
+interpreter/
+├── builtins/                 # Funciones integradas extensibles
+│   ├── math.ts              # Implementaciones matemáticas integradas
+│   ├── registry.ts          # Registro y resolución de integradas
+│   └── index.ts             # Exportación centralizada
+├── callables/               # Gestión de funciones y procedimientos
+│   ├── callableExecutor.ts  # Ejecuta funciones/procedimientos con ámbitos aislados
+│   ├── callableInvoker.ts   # Coordina la invocación de funciones
+│   ├── callableRegistry.ts  # Registro de funciones/procedimientos definidos por el usuario
+│   ├── callableResolver.ts  # Resuelve funciones por nombre
+│   └── index.ts             # Exportación centralizada
+├── constants/               # Constantes centralizadas
+│   ├── errorMessages.ts     # Todas las cadenas de mensajes de error
+│   └── index.ts             # Exportación centralizada
+├── environment/             # Ámbito de variables y tablas de símbolos
+│   ├── environment.ts       # Ámbito único: variables, tipos, inmutabilidad
+│   ├── environmentManager.ts # Pila de entornos para anidamiento de ámbitos
+│   └── index.ts             # Exportación centralizada
+├── evaluators/              # Evaluación especializada de sentencias
+│   ├── doWhileEvaluator.ts  # Sentencias Repetir...Hasta que (do-while)
+│   ├── expressionEvaluator.ts # Evaluación de expresiones
+│   ├── forEvaluator.ts      # Sentencias Para (for)
+│   ├── ifEvaluator.ts       # Sentencias Si/Entonces/Sino
+│   ├── ioEvaluator.ts       # Sentencias Leer/Escribir
+│   ├── loopGuard.ts         # Protección contra bucles infinitos
+│   ├── switchEvaluator.ts   # Sentencias Según (switch)
+│   ├── whileEvaluator.ts    # Sentencias Mientras
+│   └── index.ts             # Exportación centralizada
+├── orchestrator/            # Capa principal de orquestación
+│   ├── evaluator.ts         # Coordinador principal del intérprete
+│   ├── statementDispatcher.ts # Enruta sentencias a manejadores
+│   ├── statementHandlerRegistry.ts # Registro de manejadores de sentencias
+│   └── index.ts             # Exportación centralizada
+├── types/                   # Sistema de tipos y validación
+│   ├── evaluatorContext.ts  # Contrato de interfaz de contexto
+│   ├── evaluatorContextContracts.ts # Interfaces de contexto especializadas
+│   ├── typeChecker.ts       # Fachada de comprobación de tipos
+│   ├── typeCoercer.ts       # Conversión y coerción de tipos
+│   ├── typeValidator.ts     # Validación y aserciones de tipos
+│   └── index.ts             # Exportación centralizada
+├── utils/                   # Utilidades compartidas
+│   ├── valueUtils.ts        # Conversión y validación de valores
+│   └── index.ts             # Exportación centralizada
 
-## Core Components
 
-### 1. Core Orchestrator (`core/`)
-- **evaluator.ts** — Main orchestrator that coordinates all interpreter operations
-  - Initializes dependencies (environment, builtins, type checker, callable registry)
-  - Registers user-defined functions and procedures
-  - Dispatches statements to specialized evaluators
-  - **Pure orchestration** — no domain logic
-
-### 2. Domain Modules
-
-#### `callables/`
-Manages function and procedure invocation:
-- **callableExecutor.ts** — Executes functions/procedures with isolated scopes
-- **callableRegistry.ts** — Registry for user-defined functions and procedures
-- **index.ts** — Barrel export
-
-#### `environment/`
-Manages variable scope and symbol tables:
-- **environment.ts** — Single scope: variable values, types, and immutability flags
-- **environmentManager.ts** — Stack of environments for scope management
-- **index.ts** — Barrel export
-
-#### `context/`
-Adapter pattern for context passing to evaluators:
-- **contextFactory.ts** — Creates EvaluatorContext for specialized evaluators
-- **types/evaluatorContext.ts** — Interface contract for context operations
-- **index.ts** — Barrel export
-
-#### `builtins/`
-Extensible builtin functions registry:
-- **registry.ts** — `BuiltinRegistry` class for registering and resolving builtins
-- **math.ts** — Mathematical builtins (currently: REDOND/rounding)
-- **index.ts** — `initBuiltins()` function for initialization
-
-**Key Benefit:** New builtins can be added without modifying `evaluator.ts`
-
-#### `evaluators/`
-Specialized evaluation logic for statement types:
-- **controlFlowEvaluator.ts** — If, While, For statements
-- **doWhileEvaluator.ts** — Repetir...Hasta que (do-while) statements
-- **switchEvaluator.ts** — Segun (switch) statement
-- **expressionEvaluator.ts** — Expression evaluation
-- **ioEvaluator.ts** — Read/Write statements
-- **loopGuard.ts** — Prevents infinite loop execution (max 10,000 iterations)
-- **index.ts** — Barrel export
-
-#### `constants/`
-Centralized error messages:
-- **errorMessages.ts** — All runtime error messages (immutable contract)
-- **index.ts** — Barrel export
-
-#### `utils/`
-Utility functions for value handling:
-- **valueUtils.ts** — Value conversion and validation helpers
-- **index.ts** — Barrel export
-
-### 3. Type System (`types/`)
-
-Separated into three specialized modules with a façade interface:
-
-#### **typeValidator.ts** (`TypeValidator`)
-Type validation and assertions:
-- `assertValueMatchesType()` — Validates value matches expected type
-- `assertNumberType()` — Validates numeric type
-- `assertVariableExists()` — Validates variable is defined
-- `assertSwitchCaseCompatible()` — Validates switch case compatibility
-- `canAssign()` — Checks safe assignment
-
-#### **typeCoercer.ts** (`TypeCoercer`)
-Input conversion and coercion:
-- `coerceInputValue()` — Converts input strings to expected types
-  - String → Integer / Real (numeric parsing)
-  - String → Logico (boolean conversion)
-  - Validates AN(maxLength) alfanumerico constraints
-
-#### **typeRules.ts** (`TypeRules`)
-Type resolution and rules:
-- `resolveValueType()` — Determines runtime type from value
-- `resolveSwitchValueType()` — Resolves switch expression type
-
-#### **typeChecker.ts** (`TypeChecker` Façade)
-Unified interface delegating to all three modules:
-- All public methods from TypeValidator, TypeCoercer, and TypeRules
-- Single entry point for backward compatibility
-- Enables future refactoring without affecting callsites
-
-#### **index.ts**
-Barrel export for all type modules
-
-## Refactoring Phases (Completed)
-
-### Phase 1: Structural Reorganization ✅
-- Moved related files into domain folders
-- Created barrel exports (index.ts) for each domain
-- Updated all imports across codebase
-- All tests pass; no behavioral changes
-
-### Phase 2: Extract Builtins ✅
-- Created `builtins/` folder with extensible registry
-- Extracted REDOND logic from evaluator.ts
-- `evaluator.ts` now pure orchestrator (no domain logic)
-- REDOND continues to work exactly as before
-
-### Phase 3: Type Check & Stabilization ✅
-- Verified no TypeScript errors after reorganization
-- All imports correctly resolved
-- All tests (37/37) pass
-
-### Phase 4: Type System Refactoring ✅
-- Separated typeSystem.ts into three focused modules
-- Created TypeChecker façade for backward compatibility
-- All type operations remain functionally identical
-- All tests (37/37) pass; TypeScript clean
-
-## Import Patterns
-
-### Recommended (using barrel exports)
-```typescript
-import { TypeChecker } from './types'
-import { CallableExecutor } from './callables'
-import { Environment } from './environment'
 ```
 
-### Also valid (specific imports)
-```typescript
-import { TypeValidator } from './types/typeValidator'
-import { TypeCoercer } from './types/typeCoercer'
-import { CallableExecutor } from './callables/callableExecutor'
-```
+## Patrones Arquitectónicos
 
-## Adding New Builtins
+### 1. Patrón Estrategia (Evaluación de Sentencias)
 
-1. Create a factory function in `builtins/math.ts` (or new builtins file)
-2. Export from `builtins/index.ts`
-3. Register in `initBuiltins()` function
-4. No changes to `evaluator.ts` needed
+**Ubicación:** `orchestrator/`
 
-Example:
-```typescript
-// builtins/math.ts
-export function createABS(): BuiltinFunction {
-  return {
-    name: 'ABS',
-    execute: (args) => Math.abs(args[0])
-  }
-}
+**Componentes:**
+- `statementDispatcher.ts` — Implementa la interfaz de estrategia de enrutamiento
+- `statementHandlerRegistry.ts` — Registro de diferentes estrategias
+- `evaluators/*.ts` — Implementaciones individuales de estrategia
 
-// builtins/index.ts - in initBuiltins()
-registry.register(createABS())
-```
+**Propósito:**  Cada tipo de sentencia (Si, Mientras, Para, etc.) tiene su propio manejador. El despachador identifica el tipo de sentencia y delega al manejador correspondiente.
 
-## Future Improvements
-
-**Phase 5 (Not yet implemented):**
-- Further decompose ioEvaluator.ts if needed
-- Consider separating controlFlowEvaluator.ts by statement type
-- Input/output abstraction layer for better testability
-- Expand type coercion capabilities
-
-## Testing Strategy
-
-- All tests are in `__tests__/interpreter.test.ts`
-- Run with: `pnpm --filter @pseudoweb/core exec vitest run`
-- After structural changes, run TypeCheck: `pnpm exec tsc --noEmit`
-- Error message strings are part of the public contract — do not modify
-
-## Key Principles
-
-1. **One change type per phase** — Structure changes separate from logic changes
-2. **Tests must pass 100%** after each phase before proceeding
-3. **Barrel exports** prevent import fragility during refactoring
-4. **Dependency injection** keeps modules loosely coupled
-5. **Façade pattern** enables safe decomposition with backward compatibility
+**Beneficio:**  Agregar nuevos tipos de sentencias no requiere modificar el despachador ni el evaluador principal.
 
 ---
 
-**Last updated:** May 6, 2026  
-**Status:** Phases 1-4 complete; all tests passing
+### 2. Patrón Fachada (Sistema de Tipos)
+
+# Arquitectura del Intérprete
+
+## Estructura de carpetas
+
+```
+interpreter/
+├── builtins/                 # Funciones integradas extensibles
+│   ├── math.ts               # Implementaciones matemáticas integradas
+│   ├── registry.ts           # Registro y resolución de integradas
+│   └── index.ts              # Exportación centralizada
+├── callables/                # Gestión de funciones y procedimientos
+│   ├── callableExecutor.ts   # Ejecuta funciones/procedimientos con ámbitos aislados
+│   ├── callableInvoker.ts    # Coordina la invocación de funciones
+│   ├── callableRegistry.ts   # Registro de funciones/procedimientos definidos por el usuario
+│   ├── callableResolver.ts   # Resuelve funciones por nombre
+│   └── index.ts              # Exportación centralizada
+├── constants/                # Constantes centralizadas
+│   ├── errorMessages.ts      # Todas las cadenas de mensajes de error
+│   └── index.ts              # Exportación centralizada
+├── environment/              # Ámbito de variables y tablas de símbolos
+│   ├── environment.ts        # Ámbito único: variables, tipos, inmutabilidad
+│   ├── environmentManager.ts # Pila de entornos para anidamiento de ámbitos
+│   └── index.ts              # Exportación centralizada
+├── evaluators/               # Evaluación especializada de sentencias
+│   ├── doWhileEvaluator.ts   # Sentencias Repetir...Hasta que (do-while)
+│   ├── expressionEvaluator.ts# Evaluación de expresiones
+│   ├── forEvaluator.ts       # Sentencias Para (for)
+│   ├── ifEvaluator.ts        # Sentencias Si/Entonces/Sino
+│   ├── ioEvaluator.ts        # Sentencias Leer/Escribir
+│   ├── loopGuard.ts          # Protección contra bucles infinitos
+│   ├── switchEvaluator.ts    # Sentencias Según (switch)
+│   ├── whileEvaluator.ts     # Sentencias Mientras
+│   └── index.ts              # Exportación centralizada
+├── orchestrator/             # Capa principal de orquestación
+│   ├── evaluator.ts          # Coordinador principal del intérprete
+│   ├── statementDispatcher.ts# Enruta sentencias a manejadores
+│   ├── statementHandlerRegistry.ts # Registro de manejadores de sentencias
+│   └── index.ts              # Exportación centralizada
+├── types/                    # Sistema de tipos y validación
+│   ├── evaluatorContext.ts   # Contrato de interfaz de contexto
+│   ├── evaluatorContextContracts.ts # Interfaces de contexto especializadas
+│   ├── typeChecker.ts        # Fachada de comprobación de tipos
+│   ├── typeCoercer.ts        # Conversión y coerción de tipos
+│   ├── typeValidator.ts      # Validación y aserciones de tipos
+│   └── index.ts              # Exportación centralizada
+├── utils/                    # Utilidades compartidas
+│   ├── valueUtils.ts         # Conversión y validación de valores
+│   └── index.ts              # Exportación centralizada
+
+```
+
+## Patrones arquitectónicos
+
+### 1. Patrón Estrategia (Evaluación de sentencias)
+
+**Ubicación:** `orchestrator/`
+
+**Componentes:**
+- `statementDispatcher.ts` — Implementa la interfaz de estrategia de enrutamiento
+- `statementHandlerRegistry.ts` — Registro de diferentes estrategias
+- `evaluators/*.ts` — Implementaciones individuales de estrategia
+
+**Propósito:** Cada tipo de sentencia (Si, Mientras, Para, etc.) tiene su propio manejador. El despachador identifica el tipo de sentencia y delega al manejador correspondiente.
+
+**Beneficio:** Agregar nuevos tipos de sentencias no requiere modificar el despachador ni el evaluador principal.
+
+---
+
+### 2. Patrón Fachada (Sistema de tipos)
+
+**Ubicación:** `types/`
+
+**Componentes:**
+- `typeChecker.ts` — Interfaz unificada (fachada)
+- `typeValidator.ts` — Lógica de validación de tipos
+- `typeCoercer.ts` — Lógica de conversión de tipos
+- `typeValidator.ts` — Reglas adicionales de tipos
+
+**Propósito:** Oculta la complejidad de varios módulos de tipos detrás de una sola interfaz.
+
+**Beneficio:** Permite reorganizar internamente el sistema de tipos sin afectar el código que lo utiliza. Las operaciones de tipos permanecen cohesivas desde la perspectiva del llamador.
+
+---
+
+### 3. Patrón Registro (Integradas y funciones)
+
+**Ubicación:** `builtins/` y `callables/`
+
+**Componentes:**
+- `builtins/registry.ts` — Gestiona el registro de funciones integradas
+- `callables/callableRegistry.ts` — Gestiona el registro de funciones/procedimientos definidos por el usuario
+- `callables/callableResolver.ts` — Resuelve la identidad de funciones (integradas vs usuario)
+
+**Propósito:** Separa el almacenamiento y búsqueda de funciones/procedimientos de su ejecución.
+
+**Beneficio:** Las funciones pueden registrarse, descubrirse y resolverse sin acoplamiento fuerte. Se pueden añadir nuevas integradas sin modificar el evaluador.
+
+---
+
+### 4. Patrón Adaptador (Paso de contexto)
+
+**Ubicación:** `types/evaluatorContext.ts`
+
+**Componentes:**
+- `evaluatorContext.ts` — Define la interfaz de contexto
+- `evaluatorContextContracts.ts` — Interfaces de contexto especializadas para diferentes evaluadores
+
+**Propósito:** Proporciona vistas especializadas del evaluador a diferentes componentes sin exponer toda la implementación.
+
+**Beneficio:** Los componentes dependen solo de los métodos que necesitan, no de toda la interfaz del evaluador. Reduce el acoplamiento entre orquestador y evaluadores especializados.
+
+---
+
+### 5. Inyección de dependencias
+
+**Ubicación:** `orchestrator/evaluator.ts`
+
+**Patrón:** Inyección de dependencias por constructor
+
+**Componentes inyectados:**
+- `Environment` — Gestión del ámbito de variables
+- `EnvironmentManager` — Pila de ámbitos
+- `TypeChecker` — Validación y coerción de tipos
+- `CallableRegistry` — Funciones/procedimientos definidos por el usuario
+- `BuiltinRegistry` — Funciones integradas
+- `StatementDispatcher` — Enrutamiento de sentencias
+
+**Propósito:** Desacoplar el orquestador de sus dependencias, facilitando pruebas y refactorización.
+
+**Beneficio:** Cada dependencia puede ser sustituida, simulada o extendida sin modificar el evaluador.
+
+---
+
+### 6. Cadena de responsabilidad (Resolución e invocación de funciones)
+
+**Ubicación:** `callables/`
+
+**Componentes:**
+- `callableResolver.ts` — Determina la fuente de la función (integrada o usuario)
+- `callableInvoker.ts` — Enruta al ejecutor apropiado
+- `callableExecutor.ts` — Ejecuta la función resuelta
+
+**Propósito:** Una solicitud (llamada de función) pasa por una cadena de manejadores hasta que uno la procesa.
+
+**Beneficio:** Separación clara de responsabilidades: resolver → invocar → ejecutar.
+
+---
+
+## Detalles por subcarpeta
+
+### `builtins/`
+**Responsabilidad:** Almacenar y proporcionar acceso a las funciones integradas del lenguaje.
+
+**Clases/Funciones clave:**
+- `BuiltinRegistry` — Singleton que almacena todas las integradas disponibles
+- `initBuiltins()` — Función de inicialización del registro de integradas
+- Funciones matemáticas — REDOND, TRUNCAR, RAIZ, SENO, COSENO, etc.
+
+**Cómo funciona:** Cuando se encuentra una llamada a función, el resolvedor comprueba primero las integradas antes de buscar funciones definidas por el usuario.
+
+---
+
+### `callables/`
+**Responsabilidad:** Gestionar el ciclo de vida de llamadas a funciones y procedimientos (resolución, invocación, ejecución).
+
+**Clases clave:**
+- `CallableRegistry` — Almacena funciones y procedimientos definidos por el usuario
+- `CallableResolver` — Determina si un nombre es una integrada o está definida por el usuario
+- `CallableInvoker` — Enruta al ejecutor correcto (integrada o definida por el usuario)
+- `CallableExecutor` — Crea un ámbito aislado y ejecuta el cuerpo de la función
+
+**Cómo funciona:**
+1. El resolvedor identifica la fuente del callable.
+2. El invocador enruta al ejecutor correcto.
+3. El ejecutor crea un nuevo entorno (ámbito hijo) y ejecuta el cuerpo.
+4. El entorno se restaura después de la ejecución.
+
+---
+
+### `environment/`
+**Responsabilidad:** Gestionar el almacenamiento de variables y la jerarquía de ámbitos.
+
+**Clases clave:**
+- `Environment` — Ámbito único: almacena valores de variables, tipos y banderas de inmutabilidad
+- `EnvironmentManager` — Pila de entornos para ámbitos anidados
+
+**Cómo funciona:**
+- `environment.ts` gestiona operaciones de ámbito local (declarar, asignar, buscar)
+- `environmentManager.ts` gestiona la entrada/salida de ámbitos (push/pop en la pila)
+- Las variables se buscan a través de la cadena de padres si no se encuentran localmente
+
+---
+
+### `evaluators/`
+**Responsabilidad:** Ejecutar tipos de sentencias y expresiones específicas.
+
+**Archivos clave:**
+- `expressionEvaluator.ts` — Evalúa todos los tipos de expresiones (binarias, unarias, literales, identificadores)
+- `ifEvaluator.ts` — Sentencias Si/Entonces/Sino
+- `whileEvaluator.ts` — Sentencias Mientras
+- `forEvaluator.ts` — Sentencias Para
+- `doWhileEvaluator.ts` — Sentencias Repetir...Hasta que
+- `switchEvaluator.ts` — Sentencias Según
+- `ioEvaluator.ts` — Leer/Escribir
+- `loopGuard.ts` — Previene bucles infinitos contando iteraciones
+
+**Cómo funciona:** Cada evaluador es una función pura que recibe un nodo y el contexto, y devuelve void o un valor. No hay modificaciones de estado fuera del ámbito de evaluación.
+
+---
+
+### `orchestrator/`
+**Responsabilidad:** Coordinar la ejecución global del programa (orquestación de alto nivel).
+
+**Clases clave:**
+- `Evaluator` — Fachada principal del intérprete
+- `StatementDispatcher` — Enruta sentencias a los manejadores
+- `StatementHandlerRegistry` — Mapea tipo de sentencia → función manejadora
+
+**Cómo funciona:**
+1. `Evaluator` inicializa todas las dependencias.
+2. `Evaluator` registra declaraciones (variables, funciones, procedimientos).
+3. `Evaluator` itera por las sentencias del programa.
+4. `StatementDispatcher` enruta cada sentencia al manejador apropiado.
+5. Los manejadores ejecutan y pueden modificar el estado (variables, ámbitos) a través del contexto.
+
+---
+
+### `types/`
+**Responsabilidad:** Validar y convertir tipos de datos durante la ejecución.
+
+**Clases clave:**
+- `TypeValidator` — Valida que los valores coincidan con los tipos declarados
+- `TypeCoercer` — Convierte entradas al tipo destino
+- `TypeChecker` — Fachada que coordina validadores y coercers
+
+**Cómo funciona:**
+- Sentencias como `Leer` usan `TypeCoercer` para convertir la entrada tipo string al tipo de la variable destino.
+- Las asignaciones usan `TypeValidator` para asegurar compatibilidad de tipos.
+- Las estructuras de control usan `TypeValidator` para evaluar condiciones.
+
+---
+
+### `constants/`
+**Responsabilidad:** Centralizar las cadenas de mensajes de error (fuente única de verdad).
+
+**Contenido:** Todas las cadenas de error usadas en el intérprete.
+
+**Cómo funciona:** Las funciones de error se invocan con información de contexto (nombre de variable, tipo, etc.) para generar mensajes descriptivos.
+
+---
+
+### `utils/`
+**Responsabilidad:** Proveer utilidades de bajo nivel para manejo de valores.
+
+**Funciones clave:**
+- `stringifyValue()` — Convierte valores a cadenas legibles
+- `isTruthy()` — Coerción booleana
+- `assertDefinedValue()` — Valida valores no nulos/indefinidos
+- `toNumber()` — Convierte a número con validación
+- `toComparable()` — Asegura que un valor sea comparable numéricamente
+
+---
+
+## Flujo de datos
+
+```
+Programa (AST)
+    ↓
+Evaluator (orchestrator/evaluator.ts)
+    ↓
+StatementDispatcher (orchestrator/statementDispatcher.ts)
+    ↓
+Evaluador específico (evaluators/*.ts)
+    ├─→ ExpressionEvaluator (evaluators/expressionEvaluator.ts)
+    │   ├─→ CallableInvoker (callables/callableInvoker.ts)
+    │   └─→ CallableResolver (callables/callableResolver.ts)
+    │
+    ├─→ TypeChecker (types/typeChecker.ts)
+    │   ├─→ TypeValidator (types/typeValidator.ts)
+    │   └─→ TypeCoercer (types/typeCoercer.ts)
+    │
+    └─→ Environment/EnvironmentManager (environment/environment.ts)
+        └─→ Almacenamiento y recuperación de variables
+```
+
+---
+
+## Principios de diseño
+
+1. **Separación de responsabilidades** — Cada módulo tiene una responsabilidad clara y única
+2. **Modularidad** — Los módulos están poco acoplados y son testables de forma independiente
+3. **Extensibilidad** — Se pueden añadir nuevos tipos de sentencias, integradas y evaluadores sin modificar el código existente
+4. **Inmutabilidad** — Los mensajes de error y constantes no se modifican
+5. **Límites claros** — Cada carpeta representa una capa o preocupación arquitectónica distinta

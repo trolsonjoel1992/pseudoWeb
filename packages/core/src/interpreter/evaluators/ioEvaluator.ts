@@ -1,13 +1,8 @@
 import type { ReadNode, WriteNode } from '../../parser/ast'
 import { stringifyValue } from '../utils/valueUtils'
-import type { EvaluatorContext } from '../types/evaluatorContext'
+import type { IOEvaluatorContext } from '../types/evaluatorContextContracts'
 
-type IoEvaluatorContext = Pick<
-  EvaluatorContext,
-  'evaluateExpression' | 'requestInput' | 'lookupVariableType' | 'assignVariable' | 'pushOutput' | 'typeChecker' | 'environment'
->
-
-export async function evaluateWriteNode(node: WriteNode, context: IoEvaluatorContext): Promise<void> {
+export async function evaluateWriteNode(node: WriteNode, context: IOEvaluatorContext): Promise<void> {
   const rendered: string[] = []
   for (const expression of node.values) {
     rendered.push(stringifyValue(await context.evaluateExpression(expression)))
@@ -15,7 +10,7 @@ export async function evaluateWriteNode(node: WriteNode, context: IoEvaluatorCon
   context.pushOutput(rendered.join(' '))
 }
 
-export async function evaluateReadNode(node: ReadNode, context: IoEvaluatorContext): Promise<void> {
+export async function evaluateReadNode(node: ReadNode, context: IOEvaluatorContext): Promise<void> {
   for (const variable of node.variables) {
     context.typeChecker.assertVariableExists(variable, context.environment)
 

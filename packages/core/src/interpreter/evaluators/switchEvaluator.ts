@@ -1,13 +1,11 @@
 import type { SwitchNode } from '../../parser/ast'
 import { assertDefinedValue } from '../utils/valueUtils'
-import type { EvaluatorContext } from '../types/evaluatorContext'
+import type { SwitchEvaluatorContext } from '../types/evaluatorContextContracts'
 
-export type SwitchEvaluatorCallbacks = Pick<EvaluatorContext, 'evaluateExpression' | 'evaluateBlock' | 'typeChecker'>
-
-export async function evaluateSwitchNode(node: SwitchNode, callbacks: SwitchEvaluatorCallbacks): Promise<void> {
-  const expressionValue = await callbacks.evaluateExpression(node.expression)
+export async function evaluateSwitchNode(node: SwitchNode, context: SwitchEvaluatorContext): Promise<void> {
+  const expressionValue = await context.evaluateExpression(node.expression)
   assertDefinedValue(expressionValue, 'la expresión de Segun')
-  const expressionType = callbacks.typeChecker.resolveSwitchValueType(expressionValue)
+  const expressionType = context.typeChecker.resolveSwitchValueType(expressionValue)
 
   for (const switchCase of node.cases) {
     let matches = false
@@ -17,16 +15,16 @@ export async function evaluateSwitchNode(node: SwitchNode, callbacks: SwitchEval
         matches = true
         break
       case 'ExactMatch': {
-        const caseValue = await callbacks.evaluateExpression(switchCase.condition.value)
-        callbacks.typeChecker.assertSwitchCaseCompatible(expressionType, caseValue, false)
+        const caseValue = await context.evaluateExpression(switchCase.condition.value)
+        context.typeChecker.assertSwitchCaseCompatible(expressionType, caseValue, false)
         matches = expressionValue === caseValue
         break
       }
       case 'Comparison': {
-        const caseValue = await callbacks.evaluateExpression(switchCase.condition.value)
-        callbacks.typeChecker.assertSwitchCaseCompatible(expressionType, caseValue, true)
-        const expressionNumber = callbacks.typeChecker.assertNumberType(expressionValue, 'expresion de Segun')
-        const caseNumber = callbacks.typeChecker.assertNumberType(caseValue, 'caso de Segun')
+        const caseValue = await context.evaluateExpression(switchCase.condition.value)
+        context.typeChecker.assertSwitchCaseCompatible(expressionType, caseValue, true)
+        const expressionNumber = context.typeChecker.assertNumberType(expressionValue, 'expresion de Segun')
+        const caseNumber = context.typeChecker.assertNumberType(caseValue, 'caso de Segun')
         switch (switchCase.condition.operator) {
           case 'Mayor':
             matches = expressionNumber > caseNumber
@@ -46,7 +44,7 @@ export async function evaluateSwitchNode(node: SwitchNode, callbacks: SwitchEval
     }
 
     if (matches) {
-      await callbacks.evaluateBlock(switchCase.body)
+      await context.evaluateBlock(switchCase.body)
       break
     }
   }

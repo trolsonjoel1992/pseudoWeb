@@ -2,7 +2,6 @@ import type { DataType } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import type { Environment } from '../environment/environment'
-import { TypeRules } from './typeRules'
 
 /**
  * Local Errors - Dynamic type validation error messages
@@ -15,13 +14,31 @@ const Errors = {
     `Tipo incompatible en ${contextLabel}. Se esperaba ${expectedType}.`,
 } as const
 
+export function resolveValueType(value: unknown): string {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? 'Entero' : 'Real'
+  }
+  if (typeof value === 'string') {
+    return value.length === 1 ? 'Caracter' : 'Alfanumerico'
+  }
+  if (typeof value === 'boolean') {
+    return 'Logico'
+  }
+  return 'unknown'
+}
+
+export function resolveSwitchValueType(value: unknown): 'number' | 'string' | 'boolean' {
+  if (typeof value === 'number') return 'number'
+  if (typeof value === 'string') return 'string'
+  if (typeof value === 'boolean') return 'boolean'
+  throw new RuntimeError(ERROR_MESSAGES.SWITCH_UNSUPPORTED_TYPE)
+}
+
 /**
  * Type validation and assertion logic
  * Ensures values match expected types at runtime
  */
 export class TypeValidator {
-  private typeRules = new TypeRules()
-
   /**
    * Validate that a value matches an expected type
    * Throws RuntimeError if type mismatch
@@ -91,7 +108,7 @@ export class TypeValidator {
     caseValue: unknown,
     isComparison: boolean,
   ): void {
-    const caseType = this.typeRules.resolveSwitchValueType(caseValue)
+    const caseType = resolveSwitchValueType(caseValue)
 
     if (isComparison) {
       if (expressionType !== 'number' || caseType !== 'number') {
