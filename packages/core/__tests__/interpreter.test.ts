@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Environment } from '../src/interpreter/environment'
 import { Evaluator } from '../src/interpreter/orchestrator'
 import { Lexer } from '../src/lexer/lexer'
-import { Parser } from '../src/parser/parser'
+import { Parser } from '../src/parser'
 
 async function execute(source: string, inputValues: unknown[] = []) {
   const tokens = new Lexer(source).tokenize()

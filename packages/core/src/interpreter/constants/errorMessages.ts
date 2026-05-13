@@ -10,8 +10,8 @@ export const ERROR_MESSAGES = {
       'do-while': 'Repetir',
       generic: 'generico',
     } as const
-    const limitStr = limit ? ` (> ${limit} iteraciones)` : ''
-    return `Bucle ${labels[loopType]} excedió el límite de seguridad${limitStr}.`
+    void limit
+    return `Bucle ${labels[loopType]} excedió el límite de seguridad.`
   },
   FOR_STEP_ZERO: 'El paso del Para no puede ser cero.',
 

@@ -1,9 +1,3 @@
-/**
- * AST Type Definitions - Re-exported from modularized types
- * 
- * This file maintains backward compatibility by re-exporting all AST types
- * that are now organized in separate modules under ./types/
- */
 
 export type {
   Node,
@@ -60,3 +54,5 @@ export type {
   EnvironmentBlockNode,
   ActionNode,
 } from './types/environment'
+
+export { EMPTY_ENVIRONMENT_BLOCK } from './types/environment'

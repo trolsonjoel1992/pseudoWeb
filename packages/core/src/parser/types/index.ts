@@ -1,5 +1,7 @@
 // Re-export all types from types modules
 
+export * from './dataTypes'
+
 export type { Node } from './core'
 export type { UnaryOperator, BinaryOperator } from './operations'
 export type { DataType, LiteralValue } from './data'
