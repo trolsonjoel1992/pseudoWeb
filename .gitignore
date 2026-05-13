@@ -1,0 +1,3 @@
+# Ignore docs and prototypes at workspace root (outside pseudoWeb/)
+/*.md
+/*.html

@@ -1,0 +1,347 @@
+================================================================================
+DISEÑO E IMPLEMENTACIÓN — CALLABLE SIMPLE vs COMPLEJO
+================================================================================
+
+================================================================================
+1. REGLAS DEL LENGUAJE (CONTRATO FORMAL)
+================================================================================
+
+MAIN (Accion):
+  Siempre estricto. Ambiente obligatorio. Proceso obligatorio. Sin excepciones.
+
+  Accion <nombre> : ES
+    Ambiente
+      ...
+    Proceso
+      ...
+  FinAccion
+
+FUNCIÓN/PROCEDIMIENTO SIMPLE:
+  Sin Ambiente ni Proceso explícitos.
+  El cuerpo comienza directamente después de la firma y termina en FinFuncion/FinProcedimiento.
+  El cuerpo ES el proceso (implícito).
+  No puede declarar variables locales (no hay Ambiente donde declararlas).
+
+  Funcion sumar(a : Entero, b : Entero) : Entero
+    sumar := a + b
+  FinFuncion
+
+  Procedimiento saludar(nombre : Alfanumerico)
+    Escribir("Hola, ", nombre)
+  FinProcedimiento
+
+FUNCIÓN/PROCEDIMIENTO COMPLEJO:
+  Ambiente es opcional. Proceso es obligatorio.
+  Si declara variables locales, Ambiente es necesario.
+  La presencia de Ambiente o Proceso como primer token después de la firma
+  determina la forma compleja.
+
+  Funcion promedio(a : Entero, b : Entero, c : Entero) : Real
+  Ambiente
+    suma, cantidad : Entero
+  Proceso
+    suma := a + b + c
+    cantidad := 3
+    promedio := suma / cantidad
+  FinFuncion
+
+  Procedimiento saludar(nombre : Alfanumerico)
+  Proceso
+    Escribir("Hola, ", nombre)
+  FinProcedimiento
+
+TABLA RESUMEN:
+
+  Contexto        │ Ambiente    │ Proceso
+  ────────────────┼─────────────┼──────────────
+  Accion (main)   │ Obligatorio │ Obligatorio
+  Callable simple │ No existe   │ Implícito (el cuerpo)
+  Callable complejo│ Opcional   │ Obligatorio
+
+================================================================================
+2. REGLA DE DISCRIMINACIÓN SINTÁCTICA (SIN AMBIGÜEDAD)
+================================================================================
+
+Después de consumir la firma del callable (nombre, parámetros, tipo de retorno),
+el parser aplica esta regla sobre el siguiente token significativo:
+
+  skipSeparators()
+
+  token siguiente es Ambiente  →  forma COMPLEJA (parsear Ambiente, luego Proceso)
+  token siguiente es Proceso   →  forma COMPLEJA sin variables locales
+  cualquier otro token         →  forma SIMPLE (el cuerpo sigue hasta Fin*)
+
+Esta discriminación es determinista con un solo token de lookahead.
+No hay ambigüedad posible porque Ambiente y Proceso son palabras reservadas
+que no pueden aparecer como inicio de sentencia dentro del cuerpo.
+
+================================================================================
+3. ESTRATEGIA DE NORMALIZACIÓN EN EL AST
+================================================================================
+
+DECISIÓN CENTRAL: el AST no distingue simple de complejo.
+Ambas formas producen el mismo nodo con la misma estructura.
+
+Razón: el intérprete no necesita saber cómo fue escrito el callable,
+solo necesita qué declaraciones tiene y qué sentencias ejecutar.
+Normalizar en el parser elimina toda la complejidad del intérprete.
+
+  FunctionDeclarationNode / ProcedureDeclarationNode:
+    ambiente : EnvironmentBlockNode   ← siempre presente (vacío si simple)
+    proceso  : StatementNode[]        ← siempre presente (cuerpo directo si simple)
+
+  Para callable SIMPLE:
+    ambiente → { type: 'EnvironmentBlock', constants: [], variables: [],
+                  functions: [], procedures: [] }
+    proceso  → las sentencias del cuerpo directo
+
+  Para callable COMPLEJO:
+    ambiente → el bloque Ambiente parseado (o vacío si no se declaró)
+    proceso  → el bloque Proceso parseado
+
+RESULTADO: el intérprete no cambia. callableExecutor.ts ya ejecuta
+ambiente + proceso sin distinción. La normalización ocurre 100% en el parser.
+
+================================================================================
+4. IMPACTO EN CADA CAPA
+================================================================================
+
+PARSER — syntax/callables.ts
+  Cambio principal. parseCallable incorpora la discriminación simple/complejo.
+  parseOptionalEnvironment ya estaba propuesto; ahora tiene responsabilidad real.
+  Ver Sección 5 para la lógica concreta.
+
+  Archivos afectados:
+    syntax/callables.ts          ← lógica de discriminación
+    syntax/statements.ts         ← sin cambio (parseBlock ya existe)
+    constants/errorMessages.ts   ← nuevos mensajes de error para forma inválida
+
+AST / TYPES — types/
+  Sin cambio de estructura de nodos.
+  El campo ambiente pasa de opcional ( EnvironmentBlockNode | undefined )
+  a siempre requerido ( EnvironmentBlockNode ) porque ahora siempre se normaliza.
+
+  Archivos afectados:
+    types/ast.ts (o donde estén FunctionDeclarationNode/ProcedureDeclarationNode)
+    Cambio: ambiente?: EnvironmentBlockNode  →  ambiente: EnvironmentBlockNode
+
+INTÉRPRETE — callableExecutor.ts
+  Sin cambio de lógica.
+  Si ambiente era opcional antes, eliminar el operador ?. en accesos como
+  callable.ambiente?.constants porque ahora siempre existe.
+  Eso es una simplificación, no un cambio funcional.
+
+  Archivos afectados:
+    interpreter/callableExecutor.ts  ← eliminar optional chaining en ambiente
+
+TESTS
+  Agregar casos nuevos (ver Sección 6).
+  Los tests existentes no se rompen: la forma compleja sigue funcionando igual.
+
+DOCUMENTACIÓN
+  Actualizar gramática en docs/core/parser.md con la nueva regla.
+
+================================================================================
+5. LÓGICA DE parseCallable (PSEUDOCÓDIGO PRECISO)
+================================================================================
+
+function parseCallable(state, kind, declaredNames, options, parseEnvFn):
+
+  // — Firma —
+  start = state.peek()
+  name  = state.consume(Identificador, ERR_EXPECTED_*_NAME).lexeme
+  registerDeclarationName(state, name, declaredNames, options)
+
+  localNames = new Set([name])
+  parameters = parseParameterList(state, localNames, options?.parentScopeNames)
+
+  if kind === 'Function':
+    state.consume(DosPuntos, ERR_EXPECTED_COLON_BEFORE_RETURN_TYPE)
+    returnType = parseDataType(state)
+
+  // — Discriminación simple/complejo —
+  state.skipSeparators()
+
+  if state.check(TokenType.Ambiente) OR state.check(TokenType.Proceso):
+    // FORMA COMPLEJA
+    ambiente = parseOptionalEnvironment(state, options, localNames, parseEnvFn)
+    // Ambiente parseado (o vacío). Ahora exigir Proceso.
+    state.skipSeparators()
+    if !state.match(TokenType.Proceso):
+      throw state.parserError(
+        kind === 'Function'
+          ? ERR_EXPECTED_PROCESO_IN_FUNCTION
+          : ERR_EXPECTED_PROCESO_IN_PROCEDURE
+      )
+    finToken = kind === 'Function' ? TokenType.FinFuncion : TokenType.FinProcedimiento
+    proceso = parseBlock(state, [finToken])
+  else:
+    // FORMA SIMPLE
+    // El cuerpo son sentencias directas hasta FinFuncion/FinProcedimiento
+    ambiente = EMPTY_ENVIRONMENT_BLOCK         // normalización
+    finToken = kind === 'Function' ? TokenType.FinFuncion : TokenType.FinProcedimiento
+    proceso  = parseBlock(state, [finToken])
+
+  // — Cierre —
+  state.consume(finToken, kind === 'Function' ? ERR_EXPECTED_FIN_FUNCTION : ERR_EXPECTED_FIN_PROCEDURE)
+
+  return {
+    type:       kind === 'Function' ? 'FunctionDeclaration' : 'ProcedureDeclaration',
+    name,
+    parameters,
+    returnType,   // solo Function
+    ambiente,     // siempre EnvironmentBlockNode
+    proceso,      // siempre StatementNode[]
+    line:   start.line,
+    column: start.column,
+  }
+
+// Helper: parseOptionalEnvironment
+function parseOptionalEnvironment(state, options, localNames, parseEnvFn):
+  state.skipSeparators()
+  if state.match(TokenType.Ambiente):
+    outerNames = union(options?.parentScopeNames, declaredNames)
+    return parseEnvFn(state, {
+      parentScopeNames: union(outerNames, localNames),
+      disallowShadowing: true,
+    })
+  return EMPTY_ENVIRONMENT_BLOCK    // ← esto también resuelve Bug #1
+
+// Constante utilitaria:
+const EMPTY_ENVIRONMENT_BLOCK: EnvironmentBlockNode = {
+  type: 'EnvironmentBlock',
+  constants: [],
+  variables: [],
+  functions: [],
+  procedures: [],
+}
+
+// Exportarla desde types/ o state/ para que sea la única fuente de verdad.
+// No crear el objeto literal en cada lugar que lo necesite.
+
+================================================================================
+6. CASOS DE PRUEBA REQUERIDOS
+================================================================================
+
+PARSER — forma simple:
+
+  test: función simple parsea correctamente
+    input:
+      Accion main : ES
+      Ambiente
+        Funcion doble(n : Entero) : Entero
+          doble := n * 2
+        FinFuncion
+      Proceso
+        Escribir(doble(5))
+      FinAccion
+
+    assert: FunctionDeclarationNode con
+      ambiente.constants = []
+      ambiente.variables = []
+      proceso.length = 1  (la asignación)
+
+  test: procedimiento simple parsea correctamente
+    assert: ProcedureDeclarationNode con ambiente vacío, proceso con sentencias
+
+  test: función simple retorna valor por asignación al nombre
+    (test de intérprete, no de parser)
+    assert: doble(5) evalúa a 10
+
+PARSER — forma compleja:
+
+  test: función compleja con Ambiente y Proceso
+    assert: FunctionDeclarationNode con variables en ambiente.variables
+
+  test: función compleja sin Ambiente (solo Proceso)
+    assert: FunctionDeclarationNode con ambiente vacío, proceso con sentencias
+
+  test: procedimiento complejo con Ambiente y Proceso
+    assert: ProcedureDeclarationNode con variables en ambiente.variables
+
+PARSER — errores de forma inválida:
+
+  test: callable complejo sin Proceso lanza error
+    input: Funcion f(n:Entero):Entero \n Ambiente \n x:Entero \n FinFuncion
+    assert: throw con ERR_EXPECTED_PROCESO_IN_FUNCTION
+
+  test: función simple sin FinFuncion lanza error
+    assert: throw con ERR_EXPECTED_FIN_FUNCTION
+
+INTÉRPRETE — semántica de retorno en función simple:
+
+  test: función simple sin asignación al nombre
+    → definir comportamiento: ¿error en runtime? ¿valor por defecto?
+    → RECOMENDACIÓN: error en runtime igual que hoy
+       ("función terminó sin asignar valor de retorno")
+    → No cambiar semántica; la función simple no relaja el requisito de retorno.
+
+================================================================================
+7. MENSAJES DE ERROR NUEVOS PARA constants/errorMessages.ts
+================================================================================
+
+No se necesitan mensajes nuevos para la forma simple: si el callable simple
+no tiene FinFuncion, el error existente ERR_EXPECTED_FIN_FUNCTION es correcto.
+Si el callable complejo no tiene Proceso, ERR_EXPECTED_PROCESO_IN_FUNCTION
+también existe.
+
+Lo único que puede necesitar un mensaje nuevo es si se quiere validar
+explícitamente una combinación inválida (ejemplo: declarar Ambiente sin Proceso
+en forma compleja). Ese caso ya lanza ERR_EXPECTED_PROCESO_IN_FUNCTION, lo que
+es correcto.
+
+Sin necesidad de agregar constantes en esta iteración.
+
+================================================================================
+8. ORDEN DE IMPLEMENTACIÓN
+================================================================================
+
+  Paso 1 — Cambio en el tipo AST
+    Cambiar  ambiente?: EnvironmentBlockNode
+    a        ambiente: EnvironmentBlockNode
+    en FunctionDeclarationNode y ProcedureDeclarationNode.
+
+    Exportar EMPTY_ENVIRONMENT_BLOCK desde types/.
+
+    Ejecutar pnpm typecheck. Todos los errores de tipo resultantes
+    indican exactamente los lugares que deben actualizarse.
+
+  Paso 2 — Actualizar callableExecutor.ts en el intérprete
+    Eliminar optional chaining en accesos a callable.ambiente.
+    La garantía del tipo hace esto seguro.
+    Ejecutar pnpm test. Los tests existentes deben seguir pasando.
+
+  Paso 3 — Implementar discriminación en syntax/callables.ts
+    Reemplazar la lógica actual de parseCallable con la descripta en Sección 5.
+    parseOptionalEnvironment es el helper central: lo implementa primero.
+    Ejecutar pnpm typecheck.
+
+  Paso 4 — Agregar tests (Sección 6)
+    Tests de parser primero (rápidos, sin intérprete).
+    Tests de intérprete segundo (validan semántica de retorno).
+
+  Paso 5 — Actualizar docs/core/parser.md con la nueva gramática.
+
+================================================================================
+9. LO QUE ESTE DISEÑO NO HACE (DELIBERADAMENTE)
+================================================================================
+
+No agrega un campo 'kind: simple | complex' al nodo AST.
+  El intérprete no necesita esa información.
+  Agregarla sería transportar un detalle sintáctico al runtime sin propósito.
+
+No permite Ambiente en la forma simple.
+  Si un callable declara Ambiente, es complejo por definición.
+  Mezclar los dos (cuerpo directo + Ambiente) crea ambigüedad innecesaria.
+
+No relaja el requisito de retorno para funciones simples.
+  Una función simple con sumar := a + b funciona exactamente igual que una
+  compleja. El mecanismo de retorno (asignación al nombre) no cambia.
+  Relajar este requisito es un cambio semántico separado y mayor.
+
+No añade inferencia de tipo de retorno.
+  El tipo de retorno siempre se declara explícitamente en la firma.
+
+================================================================================
+FIN DEL PLAN
+================================================================================

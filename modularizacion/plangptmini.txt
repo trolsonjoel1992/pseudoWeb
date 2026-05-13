@@ -1,0 +1,36 @@
+Contexto usado para generar el plan de reorganizacion y refactor del interpreter
+
+El plan se construyo a partir de una lectura focalizada de la carpeta packages/core/src/interpreter del workspace pseudoWeb, con especial atencion a los archivos que concentran mas responsabilidad y a las fronteras naturales entre dominios.
+
+Elementos de contexto que guiaron el plan:
+
+- La estructura actual del interpreter muestra un evaluador principal muy centralizado, con piezas ya separadas para expresiones, control de flujo, IO, switch, utilidades y tipos.
+- evaluator.ts sigue actuando como punto de orquestacion, pero aun mezcla coordinacion general, despacho de sentencias, invocacion de callables y un caso especial built-in como REDOND.
+- callableExecutor.ts y callableRegistry.ts forman un dominio claro de manejo de funciones y procedimientos.
+- environment.ts y environmentManager.ts forman otro dominio claro para memoria, alcance y snapshot del estado de ejecucion.
+- contextFactory.ts y types/evaluatorContext.ts representan la capa de adaptacion que conecta el evaluador central con los subevaluadores.
+- typeSystem.ts es un nodo de alto acoplamiento porque concentra validacion, coercion y reglas especificas de sentencias, por lo que conviene tratarlo en una fase posterior.
+- controlFlowEvaluator.ts, doWhileEvaluator.ts, switchEvaluator.ts, expressionEvaluator.ts, ioEvaluator.ts y loopGuard.ts ya muestran una separacion por comportamiento, pero aun pueden reorganizarse por carpeta o por sentencia si se busca mas granularidad.
+
+Contexto de critica y criterio de diseño:
+
+- Se considero que fusionar switch con los evaluadores de bucle no es conveniente porque su semantica es distinta.
+- Se considero que una carpeta por dominio es mas util que un solo archivo grande, siempre que se conserven helpers compartidos para evitar duplicacion.
+- Se priorizo no cambiar el comportamiento del lenguaje durante la reorganizacion.
+- Se tomo como restriccion mantener textos de error estables, porque existen pruebas que validan substrings exactos.
+- Se tomo como prioridad reducir el peso de evaluator.ts antes de partir typeSystem.ts.
+
+Fuentes concretas del contexto:
+
+- Inventario de archivos reales dentro de packages/core/src/interpreter.
+- Lectura detallada de callableExecutor.ts, callableRegistry.ts, contextFactory.ts, environment.ts, environmentManager.ts, evaluator.ts, typeSystem.ts, errorMessages.ts, controlFlowEvaluator.ts, doWhileEvaluator.ts, expressionEvaluator.ts, ioEvaluator.ts, loopGuard.ts, switchEvaluator.ts, evaluatorContext.ts y valueUtils.ts.
+- Nota del repositorio que recomienda mantener fachadas publicas y extraer logica interna por modulos especializados.
+- Diagnostico adicional obtenido de una exploracion read-only del interpreter, que identifico como puntos criticos a evaluator.ts, typeSystem.ts y environment.ts.
+
+Resultado del contexto:
+
+- El plan propone reorganizar primero por dominios estables: callables, environment, context, evaluators, constants y utils.
+- Luego reducir evaluator.ts a un orquestador puro.
+- Finalmente dejar typeSystem.ts para una particion interna mas segura.
+
+Este archivo resume el contexto tecnico que justifico el plan, no el plan completo en si.

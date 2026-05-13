@@ -1,0 +1,385 @@
+================================================================================
+PLAN DE MEJORAS — PARSER (POST-REFACTOR)
+================================================================================
+Basado en: informe de calidad + análisis exhaustivo de statements.ts
+================================================================================
+
+================================================================================
+DIAGNÓSTICO RÁPIDO
+================================================================================
+
+statements.ts tiene 272 líneas y hace tres cosas distintas:
+
+  1. Estructura del programa raíz     → parseProgram, parseBlock
+  2. Ambiente y declaraciones         → parseEnvironment, fases, constantes, variables
+  3. Callables y parámetros           → parseCallable, parseFunction, parseProcedure,
+                                         parseParameterList
+
+Esto no es un archivo grande. Es tres archivos en uno.
+Además tiene un bug crítico activo y dos fragilidades silenciosas.
+
+================================================================================
+PRIORIDAD 1 — BUGS (CORREGIR ANTES DE TOCAR CUALQUIER OTRA COSA)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+BUG #1 — ambiente undefined en ProcedureDeclaration  [CRÍTICO]
+────────────────────────────────────────────────────────────────────────────────
+
+El problema:
+
+  FunctionDeclaration devuelve ambiente con fallback:
+    ambiente: ambiente || { type: 'EnvironmentBlock', constants: [], ... }
+
+  ProcedureDeclaration devuelve ambiente sin fallback:
+    ambiente,                    ← puede ser undefined
+
+  Si el intérprete hace procedure.ambiente.constants sin verificar, explota
+  en runtime sin mensaje claro.
+
+La corrección:
+
+  Unificar el comportamiento: tanto Function como Procedure devuelven siempre
+  un EnvironmentBlockNode completo. Nunca undefined.
+
+  Opción A (recomendada): el campo ambiente es siempre requerido en el nodo.
+  Tanto Function como Procedure usan el mismo fallback vacío cuando no se
+  declaró un bloque Ambiente.
+
+    return {
+      type: 'ProcedureDeclaration',
+      name,
+      parameters,
+      ambiente: ambiente ?? {
+        type: 'EnvironmentBlock',
+        constants: [],
+        variables: [],
+        functions: [],
+        procedures: [],
+      },
+      proceso,
+      line: start.line,
+      column: start.column,
+    }
+
+  Opción B: hacer el campo opcional en el tipo AST y que el intérprete lo
+  trate siempre con ?. — válida, pero requiere tocar el intérprete también.
+  Solo elegirla si hay intención de distinguir "no declaró ambiente" de
+  "declaró ambiente vacío".
+
+  RECOMENDACIÓN: Opción A. Más simple, no propaga la optionalidad.
+
+  Verificación: agregar test que parsee un procedimiento sin bloque Ambiente
+  y confirme que el nodo resultante tiene ambiente.constants como array vacío,
+  no undefined.
+
+────────────────────────────────────────────────────────────────────────────────
+BUG #2 — Shadowing check silencioso cuando parentScopeNames es undefined
+────────────────────────────────────────────────────────────────────────────────
+
+El problema:
+
+  if (options?.disallowShadowing && options.parentScopeNames?.has(name))
+
+  Si alguien llama registerDeclarationName con { disallowShadowing: true }
+  pero sin parentScopeNames, la condición evalúa a undefined (falsy) y no
+  lanza error aunque debería.
+
+La corrección:
+
+  Hacer parentScopeNames obligatorio cuando disallowShadowing es true,
+  forzado por el tipo:
+
+  type ParseEnvironmentOptions =
+    | { disallowShadowing?: false; parentScopeNames?: Set<string> }
+    | { disallowShadowing: true;  parentScopeNames: Set<string>  }
+
+  Así TypeScript rechaza el uso inconsistente en tiempo de compilación,
+  sin necesidad de validación en runtime.
+
+  Alternativamente, la validación defensiva en runtime:
+
+    if (options?.disallowShadowing) {
+      if (!options.parentScopeNames) {
+        throw new Error('Invariant: parentScopeNames requerido cuando disallowShadowing es true')
+      }
+      if (options.parentScopeNames.has(name)) {
+        throw state.parserError(ERR_SHADOWING_NOT_ALLOWED(name))
+      }
+    }
+
+  RECOMENDACIÓN: el tipo discriminado es la solución más limpia;
+  la validación en runtime es la más segura en caso de ser llamado
+  desde JavaScript sin tipos.
+
+────────────────────────────────────────────────────────────────────────────────
+BUG #3 — throw new Error en operadores no soportados  [DIAGNÓSTICO EXTERNO]
+────────────────────────────────────────────────────────────────────────────────
+
+El informe detecta que en algún punto del parser (probablemente expressions.ts
+o dispatcher.ts) se usa throw new Error() en lugar de throw state.parserError().
+Esto rompe la uniformidad diagnóstica: el error no lleva línea ni columna.
+
+La corrección: localizar todos los throw new Error() dentro de parser/ y
+reemplazarlos por throw state.parserError(mensaje). Usar grep para encontrarlos:
+
+  grep -rn "throw new Error" src/parser/ --include="*.ts"
+
+Cada resultado es un defecto. Ninguno debería existir dentro de parser/.
+
+================================================================================
+PRIORIDAD 2 — DIVIDIR statements.ts EN TRES ARCHIVOS
+================================================================================
+
+La razón no es el número de líneas. 272 líneas es manejable. La razón es que
+las tres responsabilidades tienen distintos motivos de cambio y distintos
+colaboradores en el codebase. Si se modifica la gramática de callables, no
+debería haber riesgo de romper el parseador de constantes del ambiente, y
+viceversa. Hoy están en el mismo archivo.
+
+────────────────────────────────────────────────────────────────────────────────
+DIVISIÓN PROPUESTA
+────────────────────────────────────────────────────────────────────────────────
+
+syntax/
+  statements.ts     ← REDUCIDO: solo parseProgram y parseBlock
+  environment.ts    ← NUEVO: parseEnvironment + maquina de fases + helpers
+  callables.ts      ← NUEVO: parseCallable, parseFunction, parseProcedure,
+                              parseParameterList
+
+statements.ts reducido (~35 líneas):
+  - parseProgram: parsea Accion/Ambiente/Proceso/FinAccion
+  - parseBlock:   acumula sentencias hasta un stopper
+  Importa de environment.ts y utiliza parseEnvironment internamente.
+  Importa de orchestrator/dispatcher para parseStatement.
+
+environment.ts (~90 líneas):
+  - ParseEnvironmentOptions (tipo)
+  - parseEnvironment: la máquina de fases
+  - registerDeclarationName: registro + detección de sombras
+  - consumeAny: helper para literales (puede subir a utils/ si se usa en otro lado)
+  Importa de callables.ts para delegar parseFunction y parseProcedure.
+
+callables.ts (~130 líneas):
+  - parseCallable: la función principal (función o procedimiento)
+  - parseFunction: delegador tipado
+  - parseProcedure: delegador tipado
+  - parseParameterList: parámetros con scope local
+
+────────────────────────────────────────────────────────────────────────────────
+DEPENDENCIAS ENTRE LOS TRES ARCHIVOS
+────────────────────────────────────────────────────────────────────────────────
+
+  statements.ts  →  environment.ts (usa parseEnvironment)
+  statements.ts  →  orchestrator/dispatcher (usa parseStatement)  [ya existe]
+  environment.ts →  callables.ts (usa parseFunction, parseProcedure)
+  callables.ts   →  environment.ts (usa parseEnvironment para Ambiente local)
+
+  ⚠️  HAY DEPENDENCIA CIRCULAR: environment.ts → callables.ts → environment.ts
+  Esta es la mutua recursión mencionada en el informe.
+  No es un error: es la naturaleza del lenguaje (un callable tiene ambiente propio).
+  TypeScript la maneja sin problema en runtime porque las funciones se resuelven
+  en tiempo de llamada, no de módulo. Pero hay que ser explícito sobre esto:
+
+  SOLUCIÓN: romper el ciclo de módulo con un parámetro inyectado.
+
+  En lugar de que callables.ts importe parseEnvironment directamente:
+
+    // callables.ts
+    export function parseCallable(
+      state: ParserContext,
+      kind: 'Function' | 'Procedure',
+      declaredNames: Set<string>,
+      options: ParseEnvironmentOptions | undefined,
+      parseEnvFn: typeof parseEnvironment,    // ← inyectado
+    ): FunctionDeclarationNode | ProcedureDeclarationNode
+
+  Y environment.ts pasa su propia función:
+
+    // environment.ts
+    functions.push(parseFunction(state, declaredNames, options, parseEnvironment))
+
+  Esto elimina el ciclo de módulo sin cambiar la lógica. El tipo de parseEnvFn
+  puede definirse en types/ si se quiere evitar la referencia cruzada de tipos.
+
+────────────────────────────────────────────────────────────────────────────────
+OPORTUNIDAD: parseOptionalEnvironment
+────────────────────────────────────────────────────────────────────────────────
+
+El análisis de statements.txt sugiere extraer una función que siempre devuelva
+un EnvironmentBlockNode (vacío si no existe), usada por parseCallable.
+
+  function parseOptionalEnvironment(
+    state: ParserContext,
+    options: ParseEnvironmentOptions,
+    parseEnvFn: typeof parseEnvironment,
+  ): EnvironmentBlockNode {
+    state.skipSeparators()
+    if (state.match(TokenType.Ambiente)) {
+      return parseEnvFn(state, options)
+    }
+    return { type: 'EnvironmentBlock', constants: [], variables: [], functions: [], procedures: [] }
+  }
+
+Esto hace dos cosas a la vez: resuelve el Bug #1 y hace explícita la opción
+"sin ambiente" como un retorno legítimo y tipado. parseCallable deja de
+necesitar el operador || o ??.
+
+────────────────────────────────────────────────────────────────────────────────
+PLAN DE EJECUCIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+  Paso 1: Corregir Bug #1 y Bug #2 en statements.ts actual.
+          Ejecutar pnpm test. Baseline limpio antes de mover archivos.
+
+  Paso 2: Crear syntax/callables.ts con el contenido de parseCallable,
+          parseFunction, parseProcedure, parseParameterList.
+          Mantener exports en syntax/index.ts.
+          Ejecutar pnpm typecheck.
+
+  Paso 3: Crear syntax/environment.ts con parseEnvironment,
+          registerDeclarationName, consumeAny, ParseEnvironmentOptions.
+          Inyectar parseEnvFn en parseCallable para evitar ciclo de módulo.
+          Ejecutar pnpm typecheck.
+
+  Paso 4: statements.ts queda solo con parseProgram y parseBlock.
+          Actualizar syntax/index.ts.
+          Ejecutar pnpm test completo.
+
+  Commit atómico por cada paso.
+
+================================================================================
+PRIORIDAD 3 — ENTRYPOINT DUPLICADO
+================================================================================
+
+El informe detecta:
+  parser/index.ts     exporta desde orchestrator/
+  parser/parser.ts    también exporta Parser desde orchestrator/parser
+
+Uno de los dos sobra. parser/parser.ts era el entrypoint original antes del
+refactor; probablemente quedó como shim de compatibilidad.
+
+La corrección:
+  Verificar si algún archivo externo importa desde 'parser/parser' directamente.
+    grep -rn "from.*parser/parser" src/ --include="*.ts"
+
+  Si no hay ninguno: eliminar parser/parser.ts.
+  Si hay alguno: actualizar esos imports a 'parser' y luego eliminar parser/parser.ts.
+
+  El único entrypoint canónico debe ser parser/index.ts.
+
+================================================================================
+PRIORIDAD 4 — TESTS NEGATIVOS
+================================================================================
+
+El informe identifica ausencia de tests para errores sintácticos. Son los más
+fáciles de implementar y los más valiosos: validan que el parser lanza el error
+correcto, con el mensaje correcto, en la situación correcta.
+
+Tests mínimos necesarios:
+
+  Sobre ambiente:
+  - Procedimiento sin bloque Ambiente → ambiente.constants debe ser []
+  - Constante declarada después de variable → ERR_CONSTANTS_BEFORE_VARIABLES
+  - Variable declarada después de función/procedimiento → ERR_VARIABLES_BEFORE_CALLABLES
+  - Identificador redeclarado en mismo ambiente → ERR_REDECLARED_IDENTIFIER
+  - Shadowing de variable externa en función → ERR_SHADOWING_NOT_ALLOWED
+
+  Sobre callables:
+  - Función sin bloque Proceso → ERR_EXPECTED_PROCESO_IN_FUNCTION
+  - Función sin FinFuncion → ERR_EXPECTED_FIN_FUNCTION
+  - Parámetro sin tipo → ERR_EXPECTED_COLON_IN_PARAMETER
+
+  Sobre separadores / estructura:
+  - Programa sin Ambiente → ERR_EXPECTED_AMBIENTE_BLOCK
+  - Programa sin Proceso → ERR_EXPECTED_PROCESO_BLOCK
+  - Programa sin FinAccion → ERR_EXPECTED_FIN_ACCION
+
+  Sobre Segun (mencionado en el informe como heurística frágil):
+  - Caso con expresión que empieza con identificador
+  - Caso con salto de línea entre cabecera y primer caso
+  - Caso con expresión vacía
+
+Formato sugerido (vitest):
+
+  it.each([
+    ['constante después de variable', '...código...', ERR_CONSTANTS_BEFORE_VARIABLES],
+    ['redeclaración de nombre',       '...código...', ERR_REDECLARED_IDENTIFIER('x')],
+  ])('error: %s', (_, source, expectedMessage) => {
+    expect(() => parse(source)).toThrow(expectedMessage)
+  })
+
+================================================================================
+PRIORIDAD 5 — LINT
+================================================================================
+
+El informe detecta ausencia de scripts de lint en core/package.json.
+
+Agregar como mínimo:
+
+  "lint": "eslint src --ext .ts",
+  "lint:fix": "eslint src --ext .ts --fix"
+
+Reglas mínimas para el parser específicamente:
+  - @typescript-eslint/no-explicit-any
+  - @typescript-eslint/consistent-type-imports  (import type vs import)
+  - no-restricted-syntax para prohibir throw new Error dentro de src/parser/
+    (forzar uso de parserError)
+
+La regla de throw new Error se puede implementar como:
+
+  {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "ThrowStatement > NewExpression[callee.name='Error']",
+        "message": "Usar state.parserError() en lugar de throw new Error() dentro del parser"
+      }
+    ]
+  }
+
+================================================================================
+RESUMEN DE PRIORIDADES Y ORDEN
+================================================================================
+
+  1  BUG: ambiente undefined en ProcedureDeclaration
+     → Corrección inmediata. Una línea. Agrega test.
+
+  2  BUG: shadowing silencioso por parentScopeNames faltante
+     → Tipo discriminado en ParseEnvironmentOptions. Agrega test.
+
+  3  BUG: throw new Error en lugar de parserError
+     → grep, reemplazar, verificar con test que el error tiene línea/columna.
+
+  4  ESTRUCTURA: dividir statements.ts en statements / environment / callables
+     → Mayor impacto en mantenibilidad. Sin cambio de comportamiento.
+     → Prerequisito: bugs 1-3 corregidos y tests pasando.
+
+  5  ENTRYPOINT: eliminar parser/parser.ts redundante
+     → Baja complejidad, alto impacto en claridad de API.
+
+  6  TESTS: negativos y casos borde de Segun/Repetir
+     → Protegen contra regresiones en las correcciones anteriores.
+
+  7  LINT: script + reglas mínimas
+     → Previene que los problemas 1-3 vuelvan a aparecer.
+
+================================================================================
+LO QUE NO ESTÁ EN ESTE PLAN (Y POR QUÉ)
+================================================================================
+
+No se propone extraer parseSegun a su propio archivo.
+  La heurística de detección de cabeceras de caso está localizada y es un
+  problema de lógica interna, no de estructura. Moverla a otro archivo no
+  la hace más correcta. Agregar tests de regresión sí.
+
+No se propone cambiar la mutua recursión parseBlock ↔ parseStatement.
+  Es inherente a la gramática recursiva descendente. Documentarla es suficiente.
+
+No se propone introducir clases, factories ni patrones nuevos.
+  El parser funciona. Las mejoras son correcciones y separación de archivos,
+  no reescritura.
+
+================================================================================
+FIN DEL PLAN
+================================================================================

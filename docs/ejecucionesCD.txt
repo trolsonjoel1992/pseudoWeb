@@ -1,0 +1,202 @@
+================================================================================
+COMANDOS DISPONIBLES — PROYECTO pseudoWeb
+Monorepo: pnpm workspace con @pseudoweb/core y @pseudoweb/web
+Ubicación: /workspaces/pseudoWeb/pseudoWeb
+================================================================================
+
+── SETUP E INSTALACIÓN ─────────────────────────────────────────────────────────
+
+Instalar dependencias del proyecto completo:
+  cd pseudoWeb && pnpm setup
+  
+O manualmente:
+  pnpm install
+
+Limpiar todas las dependencias (si se corrupen):
+  pnpm clean:deps
+  pnpm install
+
+Verificar versión de pnpm:
+  pnpm --version
+
+
+── DESARROLLO LOCAL ────────────────────────────────────────────────────────────
+
+Levantar web en desarrollo (http://localhost:5173):
+  cd pseudoWeb && pnpm dev
+
+Levantar web en desarrollo con --host (acceso desde red):
+  pnpm --filter @pseudoweb/web dev:host
+
+Levantar TODOS los servicios en paralelo (si están configurados):
+  pnpm dev:all
+
+Desarrollo con watch en core (recompila cambios automáticamente):
+  pnpm --filter @pseudoweb/core dev
+
+Preview de build web después de compilar:
+  pnpm --filter @pseudoweb/web preview
+
+
+── TESTING ─────────────────────────────────────────────────────────────────────
+
+Ejecutar TODOS los tests del monorepo:
+  pnpm test
+
+Ejecutar tests solo del core (interpreter):
+  pnpm --filter @pseudoweb/core test
+
+Ejecutar tests en modo watch (rerun automático):
+  pnpm --filter @pseudoweb/core test:watch
+  O si no existe watch:
+  pnpm --filter @pseudoweb/core test -- --watch
+
+Ejecutar tests con reporte detallado:
+  pnpm --filter @pseudoweb/core test -- --reporter=verbose
+
+Ejecutar un test específico:
+  pnpm --filter @pseudoweb/core test -- interpreter.test
+
+
+── BUILD ───────────────────────────────────────────────────────────────────────
+
+Build de todo el monorepo:
+  pnpm build
+
+  pnpm build 2>&1 | tail -60
+
+Build solo del core:
+  pnpm --filter @pseudoweb/core build
+
+Build solo de web:
+  pnpm --filter @pseudoweb/web build
+
+Build de web con optimización:
+  pnpm --filter @pseudoweb/web build -- --minify
+
+
+── VERIFICACIÓN DE TIPOS (TypeScript) ──────────────────────────────────────────
+
+Typecheck del core (sin emitir archivos):
+  pnpm --filter @pseudoweb/core typecheck
+  O directamente:
+  cd packages/core && npx tsc --noEmit
+
+Typecheck de web:
+  pnpm --filter @pseudoweb/web typecheck
+
+Typecheck completo de ambos paquetes:
+  pnpm typecheck
+
+Compilar TypeScript con salida:
+  pnpm --filter @pseudoweb/core build
+
+
+── DOCUMENTACIÓN (mkdocs) ──────────────────────────────────────────────────────
+
+Instalar mkdocs con Material theme (solo una vez):
+  pip install mkdocs mkdocs-material mkdocs-mermaid2-plugin
+
+Levantar mkdocs en desarrollo (http://localhost:8000):
+  mkdocs serve
+
+Levantar mkdocs con reload automático:
+  mkdocs serve --livereload
+
+Build de la documentación (genera carpeta site/):
+  mkdocs build
+
+Deploy de documentación a GitHub Pages:
+  mkdocs gh-deploy
+
+Limpiar sitio generado:
+  rm -rf site/
+
+
+── FLUJO DE TRABAJO COMPLETO ───────────────────────────────────────────────────
+
+1. Setup inicial del proyecto:
+   cd pseudoWeb && pnpm install
+
+2. Desarrollo en core (en terminal 1):
+   pnpm --filter @pseudoweb/core dev
+
+3. Desarrollo en web (en terminal 2):
+   pnpm --filter @pseudoweb/web dev
+
+4. Tests en core (en terminal 3):
+   pnpm --filter @pseudoweb/core test -- --watch
+
+5. Documentación (en terminal 4):
+   mkdocs serve
+
+6. Antes de hacer push:
+   pnpm test                    # Todos los tests
+   pnpm typecheck              # Verificar tipos
+   pnpm build                  # Build completo
+
+
+── COMANDOS ÚTILES PARA DEBUGGING ──────────────────────────────────────────────
+
+Ver estructura del workspace:
+  pnpm ls --depth=0
+
+Ejecutar comando en un package específico:
+  pnpm --filter @pseudoweb/core <comando>
+
+Listar scripts disponibles en un package:
+  pnpm --filter @pseudoweb/core run
+
+Ejecutar múltiples comandos en paralelo:
+  pnpm -r --parallel test
+
+Ejecutar comando solo si el package lo tiene:
+  pnpm -r --if-present test
+
+Ver logging detallado:
+  pnpm --verbose <comando>
+
+
+── INFORMACIÓN DEL PROYECTO ────────────────────────────────────────────────────
+
+Packages disponibles:
+  @pseudoweb/core   — Motor de ejecución, parser, lexer, interpreter
+  @pseudoweb/web    — Interfaz React con Vite
+
+Branch actual:
+  save/refactor-core-2026-05-05
+
+Default branch:
+  main
+
+Estructura workspace:
+  pseudoWeb/
+  ├── package.json             (scripts root)
+  ├── mkdocs.yml               (documentación)
+  ├── docs/                    (archivos markdown)
+  └── pseudoWeb/               (monorepo)
+      ├── package.json
+      ├── pnpm-workspace.yaml
+      └── packages/
+          ├── core/            (TypeScript interpreter)
+          └── web/             (React + Vite + TailwindCSS)
+
+
+── EJEMPLOS DE FLUJOS COMUNES ──────────────────────────────────────────────────
+
+Cambios en core, validación rápida:
+  pnpm --filter @pseudoweb/core test && pnpm --filter @pseudoweb/core typecheck
+
+Cambios en web, build y preview:
+  pnpm --filter @pseudoweb/web build && pnpm --filter @pseudoweb/web preview
+
+Refactor extenso, validación completa:
+  pnpm clean:deps && pnpm install && pnpm test && pnpm typecheck && pnpm build
+
+Documentar cambios:
+  mkdocs build && mkdocs serve
+
+================================================================================
+Última actualización: 2026-05-07
+================================================================================
+pnpm --filter @pseudoweb/web dev -- --host

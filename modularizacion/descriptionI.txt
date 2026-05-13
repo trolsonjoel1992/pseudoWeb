@@ -1,0 +1,151 @@
+============================================================
+INTERPRETE DE PSEUDOCÓDIGO - DESCRIPCIÓN DEL COMPORTAMIENTO
+============================================================
+
+Este documento explica el funcionamiento interno del módulo "interpreter" 
+que evalúa un AST (Árbol Sintáctico Abstracto) generado previamente por 
+los módulos LEXER y PARSER.
+
+No se detalla aquí el análisis léxico/sintáctico; solo se asume que el 
+parser produce un nodo raíz de tipo ActionNode que contiene:
+
+- Ambiente: declaraciones globales (variables, constantes, funciones, procedimientos)
+- Proceso: lista de sentencias a ejecutar (asignaciones, condicionales, bucles, etc.)
+
+EL FLUJO GENERAL
+================
+
+1. Se crea un entorno global (Environment).
+2. Se instancia un Evaluator con ese entorno y funciones de callback para entrada/salida.
+3. Se invoca evaluator.evaluate(actionNode) -> retorna Promise<EvaluationResult>.
+4. El resultado contiene:
+   - output: array de strings con todo lo escrito por "Escribir".
+   - variables: objeto con el estado final de todas las variables (nombre: valor).
+
+QUÉ RECIBE EL INTERPRETE
+========================
+
+Desde el parser, recibe un ActionNode con esta estructura (simplificada):
+
+{
+  type: "Action",
+  ambiente: {
+    variables: VariableDeclarationNode[],
+    constants: ConstantDeclarationNode[],
+    functions: FunctionDeclarationNode[],
+    procedures: ProcedureDeclarationNode[]
+  },
+  proceso: StatementNode[]
+}
+
+Además recibe (por inyección):
+- requestInput: (nombreVariable) => Promise<unknown>  (para pedir datos al usuario)
+- pushOutput: (linea) => void                        (opcional, por defecto acumula)
+
+QUÉ DEVUELVE
+============
+
+Promise<EvaluationResult> con:
+{
+  output: string[];        // líneas escritas en orden
+  variables: Record<string, unknown>;  // ejemplo: { x: 5, y: "hola" }
+}
+
+Si ocurre un RuntimeError, la promesa se rechaza con el error.
+
+COMPONENTES INTERNOS Y SUS RESPONSABILIDADES
+============================================
+
+1. Environment (entorno / tabla de símbolos)
+   - Almacena valores, tipos y constantes.
+   - Soporta ámbitos anidados (enclosing).
+   - Métodos: define, assign, lookup, lookupType, has, isConstant, snapshot.
+   - Regla: las constantes no pueden reasignarse.
+   - Lanza error si se asigna o lee una variable no declarada.
+
+2. Evaluator (orquestador principal)
+   - Registra funciones y procedimientos (separados de variables).
+   - Define variables y constantes globales en el Environment.
+   - Procesa la lista de sentencias (proceso) secuencialmente.
+   - Cada sentencia se deriva a un evaluador especializado.
+   - Maneja llamadas a funciones (incluyendo predefinidas como "redond") y procedimientos.
+   - Al invocar una función/procedimiento:
+        * Crea un nuevo Environment anidado.
+        * Copia funciones/procedimientos (ámbito estático).
+        * Define parámetros y luego el ambiente interno (variables locales).
+        * Ejecuta el bloque.
+        * Para funciones: el retorno se asigna a una variable con el nombre de la función.
+        * Restaura el entorno anterior.
+
+3. evaluators/controlFlowEvaluator.ts
+   - Evalúa Si, Mientras, Para.
+   - Para: la variable de control se crea o asigna en el entorno actual.
+   - Límite de 10000 iteraciones por seguridad.
+
+4. evaluators/expressionEvaluator.ts
+   - Evalúa literales, identificadores, operadores unarios y binarios, llamadas a función.
+   - Operadores soportados: aritméticos (+, -, *, /, Div, Mod, ^), comparación (=, !=, <, >, <=, >=), lógicos (Y, O, No).
+   - Nota: las comparaciones relacionales (<, >, etc.) solo funcionan con números según valueUtils.ts.
+
+5. evaluators/ioEvaluator.ts
+   - Escribir: convierte cada valor a string (null/undefined -> vacío) y los une con espacios.
+   - Leer: para cada variable:
+        * Valida que la variable esté declarada.
+        * Llama a requestInput (asíncrono).
+        * Convierte el valor ingresado al tipo declarado (Entero, Real, Caracter, Alfanumerico, Logico, AN(longitud)).
+        * Asigna el valor ya convertido.
+
+6. utils/valueUtils.ts
+   - stringifyValue: convierte a string para escritura.
+   - isTruthy: convierte a booleano (0, "", null, undefined -> false).
+   - assertDefinedValue: lanza error si es null/undefined.
+   - toNumber: solo acepta números finitos ya existentes (no convierte strings).
+   - toComparable: solo acepta números (limita comparaciones relacionales a numéricas).
+
+PROCESO TÍPICO DE EJECUCIÓN DE UNA SENTENCIA
+=============================================
+
+Ejemplo: Asignación  "x <- 5 + 3"
+
+1. Evaluator recibe AssignmentNode.
+2. Llama a evaluateExpression sobre el nodo BinaryExpression (Suma).
+3. expressionEvaluator evaluá left (Literal 5) y right (Literal 3).
+4. Suma ambos (toNumber(5) + toNumber(3)) = 8.
+5. Verifica que la variable 'x' existe en Environment (si no, error).
+6. Verifica compatibilidad de tipo (si se declaró Entero, 8 es válido).
+7. Environment.assign('x', 8).
+
+Ejemplo: Bucle "Para i <- 1 Hasta 3"
+
+1. controlFlowEvaluator.evaluateForNode evalúa start (1) y end (3), step por defecto +1.
+2. Para i=1,2,3:
+   - bindLoopVariable: si 'i' ya existe → assign, si no → define.
+   - Ejecuta el bloque interno.
+3. Al terminar, la variable 'i' conserva el último valor (3) en el entorno actual.
+
+INTERACCIÓN CON LEXER Y PARSER
+==============================
+
+El intérprete no sabe nada del código fuente original. Solo recibe el AST 
+generado por el parser. Por tanto:
+
+- El lexer convierte texto en tokens.
+- El parser convierte tokens en AST (ActionNode).
+- El intérprete evalúa ese AST y produce salida y estado final de variables.
+
+Cualquier error léxico (carácter inválido) o sintáctico (estructura incorrecta)
+debe ser capturado por el parser; el intérprete solo lanza RuntimeError
+(semántica, tipos, variables no declaradas, etc.).
+
+LIMITACIONES CONOCIDAS (SEGÚN EL CÓDIGO ACTUAL)
+===============================================
+
+- Las comparaciones relacionales (<, >, <=, >=) no funcionan con strings.
+- Límite fijo de 10000 iteraciones en bucles (While, For, Repetir).
+- Environment permite redeclarar variables en el mismo ámbito (sobrescribe).
+- En funciones, la variable de retorno (mismo nombre que la función) puede ser sobrescrita si se declara una variable local con ese nombre.
+- La entrada (Leer) asigna null sin validación si requestInput devuelve null, lo que puede causar errores posteriores.
+
+Estas limitaciones pueden ser corregidas con mejoras en el código.
+
+============================================================

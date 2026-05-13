@@ -1,0 +1,583 @@
+================================================================================
+  PLAN DE OPTIMIZACIÓN - INTERPRETER pseudoWeb
+  Versión: 1.0 | Diagnóstico basado en INTERPRETER_CONTEXT.md
+================================================================================
+
+OBJETIVO DE ESTE DOCUMENTO
+────────────────────────────
+Este plan está redactado para ser ejecutado por un agente de IA.
+Cada mejora tiene: contexto del problema, acción concreta y código de referencia.
+Las mejoras están ordenadas por PRIORIDAD (Alta → Baja).
+No modificar el orden de implementación ya que algunas mejoras dependen de otras.
+
+================================================================================
+  MEJORA #1 — ALTA PRIORIDAD
+  Refactorizar CallableInvoker: separar resolución de invocación
+================================================================================
+
+PROBLEMA:
+  CallableInvoker mezcla dos responsabilidades:
+    1. Resolver si un nombre es builtin o user-defined (responsabilidad del Registry)
+    2. Invocar la función/procedimiento encontrada (su responsabilidad real)
+  Además, la lógica de "¿es callable?" está en CallableRegistry,
+  pero la lógica de "¿cuál tipo es?" está en CallableInvoker — overlap confuso.
+
+ARCHIVO ACTUAL AFECTADO:
+  interpreter/callables/callableInvoker.ts
+
+ACCIÓN: Crear archivo nuevo `interpreter/callables/callableResolver.ts`
+
+CONTENIDO DE callableResolver.ts:
+─────────────────────────────────
+  export class CallableResolver {
+    constructor(
+      private readonly registry: CallableRegistry,
+      private readonly builtinRegistry: BuiltinRegistry
+    ) {}
+
+    public resolveFunction(name: string): ResolvedCallable | RuntimeError {
+      const builtin = this.builtinRegistry.resolve(name)
+      if (builtin) return { kind: 'builtin', callable: builtin }
+
+      const userFn = this.registry.getFunction(name)
+      if (userFn) return { kind: 'function', declaration: userFn }
+
+      if (this.registry.isProcedure(name)) {
+        return new RuntimeError(FUNCTION_IS_PROCEDURE(name))
+      }
+
+      return new RuntimeError(NO_FUNCTION(name))
+    }
+
+    public resolveProcedure(name: string): ResolvedCallable | RuntimeError {
+      const proc = this.registry.getProcedure(name)
+      if (proc) return { kind: 'procedure', declaration: proc }
+
+      if (this.registry.isFunction(name)) {
+        return new RuntimeError(PROCEDURE_IS_FUNCTION(name))
+      }
+
+      return new RuntimeError(NO_PROCEDURE(name))
+    }
+  }
+
+ACCIÓN: Refactorizar callableInvoker.ts para que SOLO invoque (no resuelva):
+─────────────────────────────────────────────────────────────────────────────
+  export class CallableInvoker {
+    constructor(
+      private readonly resolver: CallableResolver,
+      private readonly executor: CallableExecutor
+    ) {}
+
+    public async invokeFunction(name: string, args: unknown[]): Promise<unknown> {
+      const resolved = this.resolver.resolveFunction(name)
+      if (resolved instanceof RuntimeError) throw resolved
+      return this.executor.executeFunction(resolved.declaration, args)
+    }
+
+    public async invokeProcedure(name: string, args: unknown[]): Promise<void> {
+      const resolved = this.resolver.resolveProcedure(name)
+      if (resolved instanceof RuntimeError) throw resolved
+      await this.executor.executeProcedure(resolved.declaration, args)
+    }
+  }
+
+ACCIÓN: Actualizar interpreter/callables/index.ts para exportar CallableResolver.
+
+ACCIÓN: Actualizar interpreter/orchestrator/evaluator.ts:
+  - Instanciar CallableResolver antes de CallableInvoker
+  - Pasar resolver al constructor de CallableInvoker
+
+CRITERIO DE ÉXITO:
+  - CallableInvoker no importa CallableRegistry directamente
+  - CallableResolver es la única clase que conoce ambos registries
+  - Los errores FUNCTION_IS_PROCEDURE, NO_FUNCTION, etc. se mueven a CallableResolver
+
+================================================================================
+  MEJORA #2 — ALTA PRIORIDAD
+  Implementar HandlerRegistry en StatementDispatcher (Open/Closed Principle)
+================================================================================
+
+PROBLEMA:
+  StatementDispatcher.dispatch() contiene un switch/if-else con 10+ casos.
+  Agregar un nuevo tipo de sentencia (ej: TryCatch, ForEach) requiere
+  modificar directamente el dispatcher — viola Open/Closed Principle.
+
+ARCHIVO ACTUAL AFECTADO:
+  interpreter/orchestrator/statementDispatcher.ts
+
+ACCIÓN: Crear archivo nuevo `interpreter/orchestrator/statementHandlerRegistry.ts`
+
+CONTENIDO DE statementHandlerRegistry.ts:
+──────────────────────────────────────────
+  type StatementHandler = (
+    node: StatementNode,
+    context: EvaluatorContext
+  ) => Promise<void>
+
+  export class StatementHandlerRegistry {
+    private readonly handlers = new Map<string, StatementHandler>()
+
+    public register(type: string, handler: StatementHandler): void {
+      this.handlers.set(type, handler)
+    }
+
+    public async dispatch(node: StatementNode, context: EvaluatorContext): Promise<void> {
+      const handler = this.handlers.get(node.type)
+      if (!handler) {
+        throw new RuntimeError(`Tipo de sentencia no soportado: ${node.type}`)
+      }
+      await handler(node, context)
+    }
+
+    public supports(type: string): boolean {
+      return this.handlers.has(type)
+    }
+  }
+
+ACCIÓN: Refactorizar statementDispatcher.ts para usar el registry:
+──────────────────────────────────────────────────────────────────
+  export class StatementDispatcher {
+    private readonly handlerRegistry: StatementHandlerRegistry
+
+    constructor(
+      private readonly ioEvaluator: IOEvaluator,
+      private readonly controlFlowEvaluator: ControlFlowEvaluator,
+      private readonly doWhileEvaluator: DoWhileEvaluator,
+      private readonly switchEvaluator: SwitchEvaluator
+    ) {
+      this.handlerRegistry = new StatementHandlerRegistry()
+      this.registerAllHandlers()
+    }
+
+    private registerAllHandlers(): void {
+      this.handlerRegistry.register('Write', (node, ctx) =>
+        this.ioEvaluator.evaluateWriteNode(node as WriteNode, ctx))
+      this.handlerRegistry.register('Read', (node, ctx) =>
+        this.ioEvaluator.evaluateReadNode(node as ReadNode, ctx))
+      this.handlerRegistry.register('If', (node, ctx) =>
+        this.controlFlowEvaluator.evaluateIfNode(node as IfNode, ctx))
+      this.handlerRegistry.register('While', (node, ctx) =>
+        this.controlFlowEvaluator.evaluateWhileNode(node as WhileNode, ctx))
+      this.handlerRegistry.register('For', (node, ctx) =>
+        this.controlFlowEvaluator.evaluateForNode(node as ForNode, ctx))
+      this.handlerRegistry.register('Switch', (node, ctx) =>
+        this.switchEvaluator.evaluateSwitchNode(node as SwitchNode, ctx))
+      this.handlerRegistry.register('DoWhile', (node, ctx) =>
+        this.doWhileEvaluator.evaluateDoWhileNode(node as DoWhileNode, ctx))
+      // VariableDeclaration, Assignment, CallStatement se manejan inline
+      // ya que acceden al environment directamente
+    }
+
+    public async dispatch(node: StatementNode, context: EvaluatorContext): Promise<void> {
+      if (this.handlerRegistry.supports(node.type)) {
+        return this.handlerRegistry.dispatch(node, context)
+      }
+      // Fallback para sentencias que no usan context complejo
+      await this.dispatchSimple(node, context)
+    }
+  }
+
+CRITERIO DE ÉXITO:
+  - Agregar un nuevo tipo de sentencia = solo registrar un handler, sin tocar dispatch()
+  - El switch/if-else original desaparece de dispatch()
+  - StatementHandlerRegistry es exportado para uso externo si se necesita extensión
+
+================================================================================
+  MEJORA #3 — ALTA PRIORIDAD
+  Documentar contratos de contexto con tipos Pick<> por evaluador
+================================================================================
+
+PROBLEMA:
+  EvaluatorContext es una interfaz grande (~12 métodos).
+  Cada evaluador usa solo un subconjunto, pero recibe el objeto completo.
+  Esto oculta las dependencias reales de cada evaluador y dificulta testing.
+
+ARCHIVO ACTUAL AFECTADO:
+  (el que define EvaluatorContext, probablemente types/ o orchestrator/)
+
+ACCIÓN: Crear archivo `interpreter/types/evaluatorContextContracts.ts`
+
+CONTENIDO DE evaluatorContextContracts.ts:
+───────────────────────────────────────────
+  import type { EvaluatorContext } from './evaluatorContext'
+
+  // Contrato mínimo para ExpressionEvaluator
+  export type ExpressionEvaluatorContext = Pick<EvaluatorContext,
+    | 'evaluateExpression'
+    | 'lookup'
+    | 'invokeFunction'
+    | 'typeChecker'
+  >
+
+  // Contrato mínimo para IOEvaluator
+  export type IOEvaluatorContext = Pick<EvaluatorContext,
+    | 'evaluateExpression'
+    | 'requestInput'
+    | 'lookupVariableType'
+    | 'assignVariable'
+    | 'pushOutput'
+    | 'typeChecker'
+  >
+
+  // Contrato mínimo para ControlFlowEvaluator
+  export type ControlFlowEvaluatorContext = Pick<EvaluatorContext,
+    | 'evaluateExpression'
+    | 'evaluateBlock'
+    | 'defineVariable'
+    | 'assignVariable'
+    | 'lookup'
+    | 'typeChecker'
+  >
+
+  // Contrato mínimo para SwitchEvaluator
+  export type SwitchEvaluatorContext = Pick<EvaluatorContext,
+    | 'evaluateExpression'
+    | 'evaluateBlock'
+    | 'typeChecker'
+  >
+
+  // Contrato mínimo para DoWhileEvaluator
+  export type DoWhileEvaluatorContext = Pick<EvaluatorContext,
+    | 'evaluateExpression'
+    | 'evaluateBlock'
+  >
+
+ACCIÓN: Actualizar cada evaluador para usar su contrato específico:
+───────────────────────────────────────────────────────────────────
+  // En expressionEvaluator.ts — cambiar firma de funciones:
+  // ANTES: async evaluateExpression(node, context: EvaluatorContext)
+  // DESPUÉS: async evaluateExpression(node, context: ExpressionEvaluatorContext)
+
+  // Aplicar el mismo cambio en ioEvaluator, controlFlowEvaluator,
+  // switchEvaluator y doWhileEvaluator usando su tipo Pick<> correspondiente.
+
+ACCIÓN: Exportar todos los tipos desde interpreter/types/index.ts
+
+CRITERIO DE ÉXITO:
+  - Cada evaluador declara explícitamente qué necesita del contexto
+  - El IDE/TypeScript muestra error si un evaluador accede a algo fuera de su contrato
+  - Crear mocks para tests solo requiere implementar los métodos del Pick<> del evaluador
+
+================================================================================
+  MEJORA #4 — MEDIA PRIORIDAD
+  Crear Logger centralizado inyectable
+================================================================================
+
+PROBLEMA:
+  No hay forma consistente de debuguear el flujo de ejecución.
+  Los console.log están dispersos o ausentes.
+  En tests o producción, no se puede controlar el nivel de logging.
+
+ACCIÓN: Crear archivo `interpreter/utils/logger.ts`
+
+CONTENIDO DE logger.ts:
+────────────────────────
+  export interface InterpreterLogger {
+    debug(message: string, data?: unknown): void
+    warn(message: string, data?: unknown): void
+    error(message: string, error?: Error): void
+  }
+
+  export class ConsoleLogger implements InterpreterLogger {
+    constructor(private readonly prefix = '[Interpreter]') {}
+
+    debug(message: string, data?: unknown): void {
+      if (process.env.NODE_ENV === 'development') {
+        console.debug(`${this.prefix} ${message}`, data ?? '')
+      }
+    }
+
+    warn(message: string, data?: unknown): void {
+      console.warn(`${this.prefix} ${message}`, data ?? '')
+    }
+
+    error(message: string, error?: Error): void {
+      console.error(`${this.prefix} ${message}`, error ?? '')
+    }
+  }
+
+  // Logger noop para tests (no imprime nada)
+  export class NullLogger implements InterpreterLogger {
+    debug(): void {}
+    warn(): void {}
+    error(): void {}
+  }
+
+ACCIÓN: Actualizar evaluator.ts para aceptar logger:
+─────────────────────────────────────────────────────
+  class Evaluator {
+    constructor(
+      environment: Environment,
+      requestInput: InputHandler,
+      pushOutput: OutputHandler,
+      private readonly logger: InterpreterLogger = new ConsoleLogger()
+    ) { ... }
+  }
+
+ACCIÓN: Agregar logs en puntos clave del evaluador:
+  - Al inicio de evaluateBlock: logger.debug('Evaluating block', { statementsCount })
+  - En dispatch de cada sentencia: logger.debug('Dispatching', { type: node.type })
+  - En invokeFunction: logger.debug('Invoking function', { name, argsCount: args.length })
+  - En errores runtime: logger.error('Runtime error', error)
+
+ACCIÓN: Exportar logger desde interpreter/utils/index.ts
+
+CRITERIO DE ÉXITO:
+  - Tests usan NullLogger (sin output en consola)
+  - Desarrollo usa ConsoleLogger (solo en NODE_ENV=development)
+  - Logger es inyectable (no acoplado a console directamente)
+
+================================================================================
+  MEJORA #5 — MEDIA PRIORIDAD
+  Optimizar TypeChecker Façade (eliminar .bind() verbose)
+================================================================================
+
+PROBLEMA:
+  La façade TypeChecker delega métodos con sintaxis verbose:
+    public assertValueMatchesType = this.validator.assertValueMatchesType.bind(this.validator)
+  Esto es difícil de leer y no permite agregar lógica pre/post delegación.
+
+ARCHIVO AFECTADO:
+  interpreter/types/typeChecker.ts
+
+ACCIÓN: Reemplazar delegaciones con .bind() por métodos explícitos:
+────────────────────────────────────────────────────────────────────
+  // ANTES:
+  public assertValueMatchesType = this.validator.assertValueMatchesType.bind(this.validator)
+
+  // DESPUÉS:
+  public assertValueMatchesType(value: unknown, type: DataType, context: string): void {
+    return this.validator.assertValueMatchesType(value, type, context)
+  }
+
+  // Aplicar este patrón a TODOS los métodos delegados en TypeChecker:
+  // - canAssign
+  // - assertVariableExists
+  // - assertNumberType
+  // - assertSwitchCaseCompatible
+  // - coerceInputValue
+  // - resolveValueType
+  // - resolveSwitchValueType
+
+ACCIÓN ADICIONAL: Agregar método helper que reduce boilerplate en evaluadores:
+  public assertAndGetNumber(value: unknown, context: string): number {
+    this.assertNumberType(value, context)
+    return value as number
+  }
+
+CRITERIO DE ÉXITO:
+  - No hay ningún .bind() en typeChecker.ts
+  - Los métodos son navegables desde el IDE (go to definition funciona)
+  - El nuevo método assertAndGetNumber está disponible en el TypeChecker
+
+================================================================================
+  MEJORA #6 — MEDIA PRIORIDAD
+  Hacer ConfigurableLoopGuard (configurable para tests)
+================================================================================
+
+PROBLEMA:
+  LoopGuard tiene un límite hardcodeado de 10,000 iteraciones.
+  En tests, esto puede hacer pruebas lentas o difíciles de controlar.
+  En el futuro, el límite podría ser configurable por el usuario.
+
+ARCHIVO AFECTADO:
+  interpreter/evaluators/loopGuard.ts
+
+ACCIÓN: Refactorizar LoopGuard para aceptar límite configurable:
+────────────────────────────────────────────────────────────────
+  export class LoopGuard {
+    private static readonly DEFAULT_LIMIT = 10_000
+    private iterations = 0
+
+    constructor(private readonly limit: number = LoopGuard.DEFAULT_LIMIT) {}
+
+    public checkIteration(loopType: string): void {
+      this.iterations++
+      if (this.iterations > this.limit) {
+        throw new RuntimeError(INFINITE_LOOP_DETECTED(loopType, this.limit))
+      }
+    }
+
+    public reset(): void {
+      this.iterations = 0
+    }
+
+    public getIterations(): number {
+      return this.iterations
+    }
+
+    // Solo para tests
+    public static forTesting(limit: number = 100): LoopGuard {
+      return new LoopGuard(limit)
+    }
+  }
+
+ACCIÓN: Actualizar el mensaje de error INFINITE_LOOP_DETECTED en errorMessages.ts
+  para incluir el límite actual: `Bucle infinito detectado en ${loopType} (> ${limit} iteraciones)`
+
+CRITERIO DE ÉXITO:
+  - En tests: usar LoopGuard.forTesting(100) para límite pequeño
+  - En producción: usar new LoopGuard() para el límite por defecto
+  - El límite es visible en el mensaje de error
+
+================================================================================
+  MEJORA #7 — BAJA PRIORIDAD
+  Eliminar duplicación de FunctionCall entre evaluadores
+================================================================================
+
+PROBLEMA:
+  La lógica de resolver y evaluar una FunctionCall aparece duplicada
+  en expressionEvaluator y en statementDispatcher (para CallStatement).
+
+ACCIÓN: Crear clase unificada `interpreter/callables/functionCallResolver.ts`
+────────────────────────────────────────────────────────────────────────────────
+  export class FunctionCallResolver {
+    constructor(private readonly invoker: CallableInvoker) {}
+
+    public async resolve(
+      name: string,
+      argNodes: ExpressionNode[],
+      context: ExpressionEvaluatorContext
+    ): Promise<unknown> {
+      const args = await Promise.all(
+        argNodes.map(arg => context.evaluateExpression(arg))
+      )
+      return this.invoker.invokeFunction(name, args)
+    }
+  }
+
+ACCIÓN: Reemplazar la lógica duplicada en expressionEvaluator.ts y en
+  el manejo de CallStatement en dispatcher para usar FunctionCallResolver.
+
+CRITERIO DE ÉXITO:
+  - La evaluación de argumentos y la invocación ocurren en un solo lugar
+  - Eliminar ~20 líneas duplicadas entre archivos
+
+================================================================================
+  MEJORA #8 — BAJA PRIORIDAD
+  Consolidar callables/ (reducir archivos pequeños)
+================================================================================
+
+PROBLEMA:
+  La carpeta callables/ tiene 4 archivos para ~200 líneas de código.
+  Con la adición de CallableResolver (Mejora #1), serán 5 archivos.
+  Algunos son demasiado pequeños para justificar archivos independientes.
+
+NOTA: Esta mejora se hace DESPUÉS de completar Mejora #1.
+
+ACCIÓN OPCIONAL: Si callableInvoker.ts queda con < 50 líneas tras la Mejora #1,
+  considerar moverlo inline dentro de callableResolver.ts y eliminar el archivo.
+
+  Estructura propuesta simplificada:
+    callables/
+    ├── callableRegistry.ts    (sin cambio — búsqueda y registro)
+    ├── callableResolver.ts    (nuevo — resolución builtin vs user-defined)
+    ├── callableExecutor.ts    (sin cambio — ejecución con scope aislado)
+    └── index.ts               (barrel export de los 3 anteriores)
+
+ACCIÓN: Actualizar todos los imports en el proyecto para reflejar la nueva estructura.
+
+CRITERIO DE ÉXITO:
+  - callables/ tiene máximo 4 archivos (sin contar index.ts)
+  - Ningún archivo tiene < 40 líneas de código funcional
+
+================================================================================
+  MEJORA #9 — BAJA PRIORIDAD
+  Consolidar types/ (reducir granularidad excesiva)
+================================================================================
+
+PROBLEMA:
+  types/ tiene 5 archivos para ~500 líneas.
+  typeRules.ts (~50 líneas) y typeValidator.ts tienen lógica relacionada
+  que se busca frecuentemente juntas.
+
+ACCIÓN: Fusionar typeRules.ts dentro de typeValidator.ts:
+──────────────────────────────────────────────────────────
+  // En typeValidator.ts, al final del archivo, agregar:
+
+  // === REGLAS DE TIPO (antes en typeRules.ts) ===
+  export function resolveValueType(value: unknown): DataType { ... }
+  export function resolveSwitchValueType(value: unknown): DataType { ... }
+
+ACCIÓN: Eliminar typeRules.ts del proyecto.
+
+ACCIÓN: Actualizar typeChecker.ts para importar resolveValueType y
+  resolveSwitchValueType desde typeValidator.ts en lugar de typeRules.ts.
+
+ACCIÓN: Actualizar interpreter/types/index.ts.
+
+CRITERIO DE ÉXITO:
+  - types/ tiene máximo 4 archivos: typeChecker.ts, typeValidator.ts, typeCoercer.ts, index.ts
+  - typeRules.ts no existe más
+  - Todos los imports del proyecto están actualizados
+
+================================================================================
+  RESUMEN DE CAMBIOS POR ARCHIVO
+================================================================================
+
+ARCHIVOS NUEVOS A CREAR:
+  interpreter/callables/callableResolver.ts          (Mejora #1)
+  interpreter/orchestrator/statementHandlerRegistry.ts (Mejora #2)
+  interpreter/types/evaluatorContextContracts.ts     (Mejora #3)
+  interpreter/utils/logger.ts                        (Mejora #4)
+  interpreter/callables/functionCallResolver.ts      (Mejora #7)
+
+ARCHIVOS A MODIFICAR:
+  interpreter/callables/callableInvoker.ts           (Mejora #1)
+  interpreter/callables/index.ts                     (Mejora #1, #7, #8)
+  interpreter/orchestrator/statementDispatcher.ts    (Mejora #2)
+  interpreter/orchestrator/evaluator.ts              (Mejora #1, #3, #4)
+  interpreter/evaluators/expressionEvaluator.ts      (Mejora #3, #7)
+  interpreter/evaluators/ioEvaluator.ts              (Mejora #3)
+  interpreter/evaluators/controlFlowEvaluator.ts     (Mejora #3)
+  interpreter/evaluators/switchEvaluator.ts          (Mejora #3)
+  interpreter/evaluators/doWhileEvaluator.ts         (Mejora #3)
+  interpreter/evaluators/loopGuard.ts                (Mejora #6)
+  interpreter/types/typeChecker.ts                   (Mejora #5, #9)
+  interpreter/types/typeValidator.ts                 (Mejora #9)
+  interpreter/types/index.ts                         (Mejora #3, #9)
+  interpreter/utils/index.ts                         (Mejora #4)
+  interpreter/constants/errorMessages.ts             (Mejora #6)
+
+ARCHIVOS A ELIMINAR:
+  interpreter/types/typeRules.ts                     (Mejora #9)
+
+================================================================================
+  ORDEN DE IMPLEMENTACIÓN RECOMENDADO
+================================================================================
+
+  FASE 1 — Cambios estructurales (sin romper funcionalidad):
+    1. Mejora #3: Crear evaluatorContextContracts.ts (sin cambiar implementaciones aún)
+    2. Mejora #4: Crear logger.ts e inyectarlo (es aditivo, no rompe nada)
+    3. Mejora #6: ConfigurableLoopGuard (cambio aislado)
+
+  FASE 2 — Refactorizaciones de lógica:
+    4. Mejora #1: CallableResolver (impacta callables/ y evaluator.ts)
+    5. Mejora #2: HandlerRegistry (impacta statementDispatcher.ts)
+    6. Mejora #5: TypeChecker façade (cambio interno en types/)
+
+  FASE 3 — Actualizar contratos y limpiar:
+    7. Mejora #3 (continuación): Actualizar firmas de todos los evaluadores con Pick<>
+    8. Mejora #7: FunctionCallResolver (eliminar duplicación)
+
+  FASE 4 — Consolidación final (opcional):
+    9. Mejora #8: Consolidar callables/
+    10. Mejora #9: Consolidar types/ (eliminar typeRules.ts)
+
+================================================================================
+  CRITERIOS GENERALES DE ÉXITO
+================================================================================
+
+  ✓ Todos los tests existentes siguen pasando
+  ✓ No hay errores de TypeScript (tsc --noEmit sin errores)
+  ✓ Agregar un nuevo tipo de sentencia no requiere modificar StatementDispatcher
+  ✓ Cada evaluador puede ser testeado con un mock mínimo de su contrato Pick<>
+  ✓ El logger es configurable y no imprime en tests
+  ✓ CallableInvoker no importa directamente CallableRegistry
+  ✓ typeRules.ts está eliminado y sus exports viven en typeValidator.ts
+  ✓ No hay ningún .bind() en typeChecker.ts
+
+================================================================================
+  FIN DEL PLAN
+================================================================================

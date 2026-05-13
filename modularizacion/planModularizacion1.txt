@@ -1,0 +1,1103 @@
+================================================================================
+PLAN DE REFACTORIZACIÓN — INTERPRETER
+Autor: Claude (Sonnet 4.6)
+Criterio: Ingeniería de software profesional — mínimo riesgo, máximo valor incremental
+================================================================================
+
+── DIAGNÓSTICO PREVIO ──────────────────────────────────────────────────────────
+
+Antes de proponer cualquier movimiento estructural, se identifican tres categorías
+de problemas con diferente nivel de urgencia:
+
+CRÍTICOS (bloquean extensibilidad):
+  - evaluator.ts mezcla orquestación, despacho, invocación de callables y lógica
+    de builtin (REDOND) en un único archivo. Cualquier nueva builtin o sentencia
+    amplía un archivo que ya es demasiado grande.
+  - No existe un mecanismo formal de registro de builtins; REDOND es un caso
+    especial ad-hoc embebido en la lógica central.
+
+MODERADOS (aumentan el costo de mantenimiento):
+  - La carpeta interpreter/ es plana. Los dominios (callables, environment,
+    context, evaluators) coexisten sin separación física, dificultando la
+    navegación y el razonamiento sobre límites de responsabilidad.
+  - No hay barrel exports (index.ts) por dominio, lo que hace que los imports
+    sean frágiles ante reestructuraciones.
+
+DIFERIDOS (válidos pero riesgosos si se hacen ahora):
+  - typeSystem.ts concentra validación, coerción y reglas específicas de sentencias.
+    Tocarlo mientras se mueve estructura aumenta la superficie de error innecesariamente.
+  - Partir controlFlowEvaluator.ts en archivos por sentencia (If, While, For)
+    agrega granularidad pero no resuelve ningún problema concreto hoy.
+
+
+── PRINCIPIOS QUE GUÍAN ESTE PLAN ──────────────────────────────────────────────
+
+1. Un solo tipo de cambio por fase: o estructura, o comportamiento. Nunca ambos.
+2. El árbol de tests debe pasar al 100% después de cada fase antes de continuar.
+3. Los textos de error (substrings) son contrato público; no se modifican.
+4. typeSystem.ts no se toca en la Fase 1 ni en la Fase 2.
+5. Cada movimiento de archivo se acompaña de su barrel export y la actualización
+   de todos sus importadores en el mismo commit.
+6. evaluator.ts debe quedar como orquestador puro: sin lógica de dominio.
+
+
+── ESTRUCTURA OBJETIVO ──────────────────────────────────────────────────────────
+
+packages/core/src/interpreter/
+├── core/
+│   └── evaluator.ts              ← orquestador puro (inicializa, enlaza, despacha)
+│
+├── callables/
+│   ├── callableExecutor.ts
+│   ├── callableRegistry.ts
+│   └── index.ts                  ← barrel export
+│
+├── environment/
+│   ├── environment.ts
+│   ├── environmentManager.ts
+│   └── index.ts
+│
+├── context/
+│   ├── contextFactory.ts
+│   ├── types/
+│   │   └── evaluatorContext.ts
+│   └── index.ts
+│
+├── builtins/
+│   ├── math.ts                   ← REDOND y futuras builtins matemáticas
+│   ├── registry.ts               ← mecanismo de registro de builtins
+│   └── index.ts
+│
+├── evaluators/
+│   ├── controlFlowEvaluator.ts   ← If, While, For (sin partir, por ahora)
+│   ├── doWhileEvaluator.ts
+│   ├── switchEvaluator.ts
+│   ├── expressionEvaluator.ts
+│   ├── ioEvaluator.ts
+│   ├── loopGuard.ts
+│   └── index.ts
+│
+├── constants/
+│   ├── errorMessages.ts
+│   └── index.ts
+│
+├── utils/
+│   ├── valueUtils.ts
+│   └── index.ts
+│
+└── typeSystem.ts                 ← sin mover (Fase 3 o posterior)
+
+
+── FASE 1: MOVER DOMINIOS ESTABLES (sin tocar lógica) ──────────────────────────
+
+Objetivo: crear la estructura de carpetas y mover archivos uno a uno.
+Riesgo: bajo. Solo se mueven archivos y se actualizan imports.
+
+Pasos:
+
+  1.1 Crear carpeta callables/
+      - Mover callableExecutor.ts
+      - Mover callableRegistry.ts
+      - Crear callables/index.ts con reexportación de ambos módulos
+      - Actualizar todos los imports que apuntaban a la ubicación anterior
+      - Ejecutar: vitest run → debe pasar al 100%
+
+  1.2 Crear carpeta environment/
+      - Mover environment.ts
+      - Mover environmentManager.ts
+      - Crear environment/index.ts
+      - Actualizar imports
+      - Ejecutar: vitest run → debe pasar al 100%
+
+  1.3 Crear carpeta context/
+      - Mover contextFactory.ts
+      - Mover types/evaluatorContext.ts dentro de context/types/
+      - Crear context/index.ts
+      - Actualizar imports
+      - Ejecutar: vitest run → debe pasar al 100%
+
+  1.4 Agregar barrel exports a evaluators/, constants/, utils/
+      - Crear index.ts en cada carpeta (sin mover archivos, solo reexportar)
+      - Actualizar imports donde corresponda
+      - Ejecutar: vitest run → debe pasar al 100%
+
+Criterio de completitud de Fase 1:
+  - Todos los dominios tienen carpeta propia con index.ts
+  - No hay ningún cambio de comportamiento
+  - vitest run pasa sin modificaciones en los tests
+
+
+── FASE 2: EXTRAER BUILTINS Y LIMPIAR evaluator.ts ─────────────────────────────
+
+Objetivo: eliminar el caso especial REDOND de evaluator.ts y reducirlo a
+orquestador puro. Esta es la mejora de mayor valor de todo el plan.
+Riesgo: medio. Requiere un mecanismo nuevo (registro de builtins).
+
+Pasos:
+
+  2.1 Crear builtins/registry.ts
+      - Definir interfaz BuiltinFunction: { name: string, execute: (...args) => Value }
+      - Definir BuiltinRegistry con método register(builtin) y resolve(name)
+      - El registry es inicializado una vez en el arranque del evaluador
+
+  2.2 Crear builtins/math.ts
+      - Extraer la lógica de REDOND de evaluator.ts hacia esta función
+      - Registrarla en BuiltinRegistry con el nombre "REDOND"
+      - No modificar el comportamiento de redondeo; solo moverlo
+
+  2.3 Crear builtins/index.ts
+      - Reexportar registry y math
+      - Exportar función initBuiltins() que registra todas las builtins del sistema
+
+  2.4 Actualizar evaluator.ts
+      - Importar initBuiltins() y llamarla en la inicialización
+      - Eliminar el bloque ad-hoc de REDOND
+      - Delegar la resolución de builtins al BuiltinRegistry
+      - Verificar que evaluator.ts solo contenga:
+          * Inicialización de dependencias (registry, environment, builtins, context)
+          * Registro de variables, constantes y callables del programa
+          * Despacho de sentencias a evaluadores especializados
+          * Cero lógica de dominio interna
+
+  2.5 Ejecutar: vitest run → debe pasar al 100%
+      - Verificar especialmente los tests que cubren REDOND
+
+Criterio de completitud de Fase 2:
+  - evaluator.ts no contiene ninguna lógica de dominio
+  - REDOND funciona exactamente igual que antes
+  - El mecanismo de builtins permite agregar una nueva builtin en un solo archivo
+    sin tocar evaluator.ts
+
+
+── FASE 3: TYPECHECK Y ESTABILIZACIÓN ──────────────────────────────────────────
+
+Objetivo: asegurar que el refactor no introdujo ningún problema de tipos
+tras los movimientos estructurales.
+
+Pasos:
+
+  3.1 Ejecutar tsc --noEmit sobre el workspace completo
+      - Resolver cualquier error de tipos introducido por los movimientos
+      - No agregar "any" como parche; corregir el tipo real
+
+  3.2 Revisar el diff final completo
+      - Confirmar que solo hay cambios estructurales (movimientos, imports, barrels)
+      - Confirmar que ningún archivo de lógica fue modificado salvo evaluator.ts
+        (extracción de REDOND) y los archivos de builtins (nuevo código)
+
+  3.3 Documentar en un archivo ARCHITECTURE.md (dentro de interpreter/)
+      - Describir brevemente la responsabilidad de cada carpeta
+      - Documentar el mecanismo de registro de builtins para futuros colaboradores
+      - Indicar que typeSystem.ts está pendiente de refactor en fase posterior
+
+
+── FASE 4 (FUTURA, NO EN SCOPE INMEDIATO): typeSystem.ts ───────────────────────
+
+Se deja deliberadamente para una fase posterior porque:
+  - Es el nodo de mayor acoplamiento del sistema
+  - Requiere estabilizar primero todos los callsites (ahora con barrels)
+  - Partir typeSystem.ts sin que los imports estén consolidados multiplica
+    el riesgo de regresiones
+
+Propuesta tentativa (a evaluar cuando Fases 1-3 estén completas):
+  - Separar en: typeValidator.ts, typeCoercer.ts, typeRules.ts
+  - Crear types/index.ts como punto de entrada único
+  - Migrar callsites uno a uno con typecheck después de cada uno
+
+
+── COMPARACIÓN CON LOS PLANES ANALIZADOS ───────────────────────────────────────
+
+vs. planDeepseek.txt:
+  + Coincide en la estructura de carpetas objetivo y en diferir typeSystem.ts
+  + Coincide en no fusionar switchEvaluator con controlFlowEvaluator
+  - Este plan añade pasos explícitos de validación (vitest run) entre cada
+    sub-paso, no solo al final de cada fase
+  - Este plan define la interfaz de BuiltinRegistry concretamente, no solo
+    menciona "crear un mecanismo de registro"
+  - Este plan rechaza explícitamente partir controlFlowEvaluator.ts ahora
+    (sin problema concreto que justifique el costo)
+
+vs. plangptmini.txt:
+  + Coincide en el diagnóstico de evaluator.ts como prioridad
+  + Coincide en la visión de dominios estables
+  - El plan de gptmini describe contexto y criterio de diseño pero no da
+    pasos concretos ejecutables; este plan es completamente accionable
+  - Este plan añade la Fase 3 de typecheck explícita y la Fase 4 como
+    hoja de ruta futura documentada
+
+
+── ORDEN DE PRIORIDAD REAL ─────────────────────────────────────────────────────
+
+  Alta  → Fase 2 (extraer builtins, limpiar evaluator.ts) — máximo valor
+  Alta  → Fase 1 (estructura de carpetas) — habilita Fase 2 con seguridad
+  Media → Fase 3 (typecheck y documentación) — cierra el refactor correctamente
+  Baja  → Fase 4 (typeSystem.ts) — válido pero no urgente
+
+
+── RIESGOS Y MITIGACIONES ──────────────────────────────────────────────────────
+
+  Riesgo: un movimiento de archivo rompe un import no rastreado
+  Mitigación: vitest run + tsc --noEmit después de cada sub-paso (1.1, 1.2, etc.)
+
+  Riesgo: el BuiltinRegistry introduce una abstracción incorrecta
+  Mitigación: revisar que initBuiltins() sea la única forma de registrar builtins
+  y que BuiltinRegistry no sea accesible globalmente (inyección de dependencia)
+
+  Riesgo: los textos de error cambian inadvertidamente
+  Mitigación: los tests existentes que validan substrings exactos actúan como
+  red de seguridad; no modificar errorMessages.ts en ninguna fase
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
+
+
+================================================================================
+PLAN DE REFACTORIZACIÓN — EXTRACCIÓN DE StatementDispatcher
+Scope: evaluator.ts → orchestrator/
+Prerequisito: Fases 1-4 del plan anterior completadas (37/37 tests passing)
+================================================================================
+
+── OBJETIVO ────────────────────────────────────────────────────────────────────
+
+Reducir evaluator.ts de ~220 líneas a ~90 líneas extrayendo la responsabilidad
+de despacho de sentencias a un módulo dedicado: StatementDispatcher.
+
+Resultado estructural esperado:
+
+  interpreter/
+  └── orchestrator/
+      ├── evaluator.ts          (~90 líneas — construcción, cableado, ciclo principal)
+      └── statementDispatcher.ts (~80 líneas — switch + despacho directo)
+
+── DIAGNÓSTICO PUNTUAL DE evaluator.ts ACTUAL ──────────────────────────────────
+
+Problema 1 — Wrappers privados sin lógica (ruido puro):
+  Los siguientes métodos son intermediarios de una sola línea que no aportan
+  abstracción ni lógica propia:
+
+    evaluateWrite(node)    → evaluateWriteNode(node, this.context)
+    evaluateRead(node)     → evaluateReadNode(node, this.context)
+    evaluateIf(node)       → evaluateIfNode(node, this.context)
+    evaluateWhile(node)    → evaluateWhileNode(node, this.context)
+    evaluateFor(node)      → evaluateForNode(node, this.context)
+    evaluateSwitch(node)   → evaluateSwitchNode(node, this.context)
+    evaluateDoWhile(node)  → evaluateDoWhileNode(node, this.context)
+
+  Estos 7 métodos suman ~21 líneas que se eliminan completamente.
+
+Problema 2 — evaluateStatement mezcla responsabilidades con el evaluador:
+  El switch de 10 casos vive dentro de la clase Evaluator, que ya se encarga
+  de construcción, cableado de dependencias y ciclo principal de ejecución.
+  Son dos responsabilidades distintas en la misma clase.
+
+Problema 3 — evaluateBlock duplica trabajo del dispatcher:
+  evaluateBlock llama a evaluateStatement en un loop. Si el dispatcher
+  encapsula evaluateStatement, evaluateBlock también puede vivir ahí.
+
+── ESTRUCTURA OBJETIVO ─────────────────────────────────────────────────────────
+
+orchestrator/
+├── evaluator.ts
+│     Responsabilidad única: construcción + ciclo principal
+│     Contiene:
+│       - constructor (inicialización de dependencias)
+│       - evaluate() — registra ambiente y llama al dispatcher
+│       - initializeEnvironmentDeclarations()
+│       - evaluateExpression() — se queda acá porque la usan callables
+│       - invokeFunction() y invokeProcedure()
+│       - evaluateAssignment() y evaluateCallStatement()
+│         (se quedan porque acceden directamente a this.environment,
+│          this.registry y this.builtinRegistry — no son wrappers vacíos)
+│
+└── statementDispatcher.ts
+      Responsabilidad única: despacho de sentencias al evaluador correcto
+      Contiene:
+        - clase StatementDispatcher
+        - dispatch(node: StatementNode): Promise<void>  ← el switch
+        - dispatchBlock(nodes: StatementNode[]): Promise<void>  ← el loop
+        - Llamadas directas a los evaluadores especializados (sin wrappers)
+
+── FASE 1: CREAR statementDispatcher.ts ────────────────────────────────────────
+
+1.1 Crear el archivo orchestrator/statementDispatcher.ts
+
+    Firma de la clase:
+
+      export class StatementDispatcher {
+        constructor(private readonly context: EvaluatorContext) {}
+
+        async dispatch(node: StatementNode): Promise<void> { ... }
+        async dispatchBlock(nodes: StatementNode[]): Promise<void> { ... }
+      }
+
+    El constructor recibe únicamente EvaluatorContext porque todos los
+    evaluadores especializados ya lo reciben como única dependencia.
+
+    El switch dentro de dispatch() llama directo, sin métodos intermedios:
+
+      case 'Write':
+        await evaluateWriteNode(node as WriteNode, this.context)
+        return
+      case 'If':
+        await evaluateIfNode(node as IfNode, this.context)
+        return
+      // etc.
+
+    Los casos 'VariableDeclaration', 'Assignment' y 'CallStatement' NO van
+    al dispatcher porque necesitan acceso a environment, registry y
+    builtinRegistry directamente — quedan en el evaluador.
+
+    Alternativa para esos tres casos: el dispatcher los delega a callbacks
+    inyectados en el constructor. Ver nota al final de este plan.
+
+1.2 Ejecutar: tsc --noEmit
+    El archivo nuevo no debe introducir errores de tipos antes de integrarse.
+
+── FASE 2: INTEGRAR EN evaluator.ts ────────────────────────────────────────────
+
+2.1 Instanciar StatementDispatcher en el constructor de Evaluator:
+
+      this.dispatcher = new StatementDispatcher(this.context)
+
+2.2 Reemplazar el método evaluateStatement por delegación al dispatcher:
+
+      private async evaluateStatement(node: StatementNode): Promise<void> {
+        // Casos con acceso directo a dependencias internas
+        switch (node.type) {
+          case 'VariableDeclaration':
+            this.evaluateVariableDeclaration(node as VariableDeclarationNode)
+            return
+          case 'Assignment':
+            await this.evaluateAssignment(node as AssignmentNode)
+            return
+          case 'CallStatement':
+            await this.evaluateCallStatement(node as CallStatementNode)
+            return
+        }
+        // Todo lo demás al dispatcher
+        await this.dispatcher.dispatch(node)
+      }
+
+2.3 Reemplazar evaluateBlock por delegación al dispatcher:
+
+      private async evaluateBlock(statements: StatementNode[]): Promise<void> {
+        await this.dispatcher.dispatchBlock(statements)
+      }
+
+    ATENCIÓN: dispatchBlock necesita poder llamar a evaluateStatement para
+    los tres casos especiales. Dos opciones:
+
+    Opción 2a (simple): dispatchBlock llama a dispatch() internamente y el
+    evaluador mantiene su propio loop para los casos especiales. En la práctica
+    evaluateBlock queda igual que hoy pero delegando al dispatcher para el resto.
+
+    Opción 2b (limpia): inyectar un callback evaluateStatement en el dispatcher
+    para que dispatchBlock pueda manejar todos los casos uniformemente:
+
+      this.dispatcher = new StatementDispatcher(
+        this.context,
+        (node) => this.evaluateStatement(node)   // callback
+      )
+
+    RECOMENDACIÓN: Opción 2b. Evita que el evaluador tenga dos rutas de
+    despacho distintas y permite que dispatchBlock sea el único punto de
+    entrada para ejecutar bloques de sentencias.
+
+2.4 Eliminar los 7 métodos privados wrapper (evaluateWrite, evaluateRead,
+    evaluateIf, evaluateWhile, evaluateFor, evaluateSwitch, evaluateDoWhile).
+
+2.5 Ejecutar: vitest run → debe pasar 37/37
+2.6 Ejecutar: tsc --noEmit → sin errores
+
+── FASE 3: MOVER evaluator.ts A orchestrator/ ──────────────────────────────────
+
+3.1 Crear carpeta interpreter/orchestrator/
+
+3.2 Copiar evaluator.ts a orchestrator/evaluator.ts
+    (no eliminar el original todavía)
+
+3.3 Actualizar todos los imports externos que apuntan a interpreter/evaluator.ts
+    para que apunten a interpreter/orchestrator/evaluator.ts
+
+    Buscar referencias con:
+      grep -r "from.*interpreter/evaluator" --include="*.ts" packages/
+
+3.4 Crear orchestrator/index.ts:
+
+      export { Evaluator } from './evaluator'
+      export type { EvaluationResult, InputRequestHandler, OutputHandler } from './evaluator'
+
+3.5 Ejecutar: vitest run → debe pasar 37/37
+
+3.6 Eliminar el evaluator.ts original de interpreter/
+    (el que quedó en la raíz de interpreter/)
+
+3.7 Ejecutar: vitest run → confirmar que sigue pasando
+3.8 Ejecutar: tsc --noEmit → sin errores
+
+── RESULTADO FINAL ─────────────────────────────────────────────────────────────
+
+interpreter/
+├── orchestrator/
+│   ├── evaluator.ts            (~90 líneas)
+│   ├── statementDispatcher.ts  (~80 líneas)
+│   └── index.ts                (barrel export)
+├── callables/
+├── environment/
+├── context/
+├── builtins/
+├── evaluators/
+├── constants/
+├── utils/
+├── types/
+└── typeSystem.ts               (pendiente Fase 5)
+
+Reducción total de evaluator.ts: de 220 líneas a ~90 líneas (-59%)
+Comportamiento: idéntico al actual
+Tests: 37/37 passing
+
+── MÉTRICAS DE ÉXITO ───────────────────────────────────────────────────────────
+
+  ✓ evaluator.ts < 100 líneas
+  ✓ statementDispatcher.ts < 100 líneas
+  ✓ Ningún método privado wrapper de una línea en evaluator.ts
+  ✓ vitest run → 37/37
+  ✓ tsc --noEmit → 0 errores
+  ✓ grep "evaluateWriteNode\|evaluateIfNode\|evaluateWhileNode" orchestrator/evaluator.ts → 0 resultados
+    (todas esas llamadas viven exclusivamente en el dispatcher)
+
+── RIESGOS Y MITIGACIONES ──────────────────────────────────────────────────────
+
+  Riesgo: el callback de evaluateStatement en el dispatcher crea una
+  referencia circular entre evaluador y dispatcher.
+  Mitigación: es una dependencia en una sola dirección (evaluador crea
+  el dispatcher e inyecta el callback). El dispatcher nunca importa
+  al evaluador. No es circular — es inyección de dependencia estándar.
+
+  Riesgo: los tres casos especiales (VariableDeclaration, Assignment,
+  CallStatement) quedan en evaluator.ts y el dispatcher no los conoce,
+  generando dos rutas de despacho.
+  Mitigación: con la Opción 2b (callback), dispatchBlock llama a
+  evaluateStatement del evaluador para todos los casos. Una sola
+  ruta de ejecución, sin duplicación.
+
+  Riesgo: imports rotos al mover evaluator.ts a orchestrator/.
+  Mitigación: grep antes de mover + vitest run + tsc --noEmit
+  antes de eliminar el archivo original.
+
+── NOTA SOBRE ARCHIVOS QUE NO SE TOCAN ────────────────────────────────────────
+
+  - typeSystem.ts         → sin cambios (Fase 5 futura)
+  - Todos los evaluators/ → sin cambios
+  - builtins/, callables/, environment/, context/ → sin cambios
+  - Tests → sin cambios (son la red de seguridad)
+  - errorMessages.ts → sin cambios (contrato público)
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
+
+
+================================================================================
+PLAN DE REFACTORIZACIÓN — EXTRACCIÓN DE CallableInvoker
+Scope: orchestrator/evaluator.ts → callables/callableInvoker.ts
+Prerequisito: Plan Dispatcher completo (37/37 tests passing, tsc clean)
+================================================================================
+
+── OBJETIVO ────────────────────────────────────────────────────────────────────
+
+Extraer la lógica de resolución e invocación de callables de evaluator.ts
+hacia un módulo que pertenece semánticamente al dominio callables/.
+
+La razón NO es reducir líneas. Es que evaluator.ts actualmente conoce:
+  - Que los builtins tienen prioridad sobre las funciones de usuario
+  - Que si pedís una función y existe un procedimiento con ese nombre, el
+    error es específico (y viceversa)
+  - Que la búsqueda sigue el orden: builtinRegistry → callableRegistry
+
+Esa lógica de resolución de nombres es dominio de callables/, no del orquestador.
+
+Resultado estructural esperado:
+
+  callables/
+  ├── callableExecutor.ts     (sin cambios)
+  ├── callableRegistry.ts     (sin cambios)
+  ├── callableInvoker.ts      ← nuevo
+  └── index.ts                (actualizado)
+
+  orchestrator/
+  └── evaluator.ts            (~130 líneas — sin lógica de resolución de nombres)
+
+── ANÁLISIS DE LO QUE SE EXTRAE ────────────────────────────────────────────────
+
+Los dos métodos que salen de evaluator.ts:
+
+  invokeFunction(name, args):
+    1. Busca en builtinRegistry → ejecuta si existe
+    2. Busca en callableRegistry → lanza error específico si es procedimiento
+    3. Ejecuta con callableExecutor.executeFunction()
+
+  invokeProcedure(name, args):
+    1. Busca en callableRegistry → lanza error específico si es función
+    2. Ejecuta con callableExecutor.executeProcedure()
+
+Dependencias que necesita CallableInvoker:
+  - BuiltinRegistry         (resolución de builtins)
+  - CallableRegistry        (resolución de funciones/procedimientos de usuario)
+  - CallableExecutor        (ejecución real)
+
+Las tres ya existen en callables/ o en builtins/. No se crea nada nuevo,
+solo se reagrupa la lógica donde corresponde.
+
+── FASE 1: CREAR callableInvoker.ts ────────────────────────────────────────────
+
+1.1 Crear packages/core/src/interpreter/callables/callableInvoker.ts
+
+    Firma de la clase:
+
+      export class CallableInvoker {
+        constructor(
+          private readonly builtinRegistry: BuiltinRegistry,
+          private readonly registry: CallableRegistry,
+          private readonly executor: CallableExecutor,
+        ) {}
+
+        async invokeFunction(name: string, args: unknown[]): Promise<unknown>
+        async invokeProcedure(name: string, args: unknown[]): Promise<void>
+      }
+
+    El cuerpo de cada método es una copia exacta del método homónimo en
+    evaluator.ts — sin cambios de lógica, sin cambios de mensajes de error.
+
+    CRÍTICO: Los mensajes de error no se modifican. Son contrato público:
+      - `'${name}' es un procedimiento y no puede usarse dentro de una expresión.`
+      - `No existe una función llamada '${name}'.`
+      - `'${name}' es una función y debe usarse dentro de una expresión.`
+      - `No existe un procedimiento llamado '${name}'.`
+
+1.2 Ejecutar: tsc --noEmit
+    El archivo nuevo debe compilar sin errores antes de integrarse.
+
+── FASE 2: ACTUALIZAR callables/index.ts ───────────────────────────────────────
+
+2.1 Agregar la exportación de CallableInvoker al barrel existente:
+
+      export { CallableInvoker } from './callableInvoker'
+
+    No modificar las exportaciones existentes — solo agregar.
+
+2.2 Ejecutar: tsc --noEmit → sin errores
+
+── FASE 3: INTEGRAR EN evaluator.ts ────────────────────────────────────────────
+
+3.1 Agregar propiedad al Evaluator:
+
+      private readonly invoker: CallableInvoker
+
+3.2 Instanciar en el constructor, después de que callableExecutor esté creado:
+
+      this.invoker = new CallableInvoker(
+        this.builtinRegistry,
+        this.registry,
+        this.callableExecutor,
+      )
+
+    ATENCIÓN: CallableExecutor se construye antes en el constructor porque
+    necesita callbacks hacia el evaluador (evaluateBlock, initializeEnvironmentDeclarations).
+    CallableInvoker se instancia después de CallableExecutor — solo después.
+
+3.3 Actualizar el context que se pasa a ContextFactory:
+
+    La propiedad invokeFunction del context actualmente apunta a:
+      invokeFunction: (name, args) => this.invokeFunction(name, args)
+
+    Cambiar a:
+      invokeFunction: (name, args) => this.invoker.invokeFunction(name, args)
+
+3.4 Actualizar evaluateCallStatement para usar el invoker:
+
+    Antes:
+      if (this.registry.isProcedure(node.call.name)) {
+        await this.invokeProcedure(node.call.name, args)
+        return
+      }
+      if (this.registry.isFunction(node.call.name)) {
+        await this.invokeFunction(node.call.name, args)
+        return
+      }
+      throw new RuntimeError(`No existe una función o procedimiento llamado '${node.call.name}'.`)
+
+    Después:
+      if (this.registry.isProcedure(node.call.name)) {
+        await this.invoker.invokeProcedure(node.call.name, args)
+        return
+      }
+      if (this.registry.isFunction(node.call.name)) {
+        await this.invoker.invokeFunction(node.call.name, args)
+        return
+      }
+      throw new RuntimeError(`No existe una función o procedimiento llamado '${node.call.name}'.`)
+
+3.5 Eliminar los métodos privados invokeFunction e invokeProcedure de evaluator.ts
+
+3.6 Ejecutar: vitest run → debe pasar 37/37
+3.7 Ejecutar: tsc --noEmit → sin errores
+
+── RESULTADO FINAL ─────────────────────────────────────────────────────────────
+
+evaluator.ts contendrá únicamente:
+  - Imports y tipos públicos (EvaluationResult, InputRequestHandler, OutputHandler)
+  - Propiedades de la clase
+  - constructor (inicialización y cableado de dependencias)
+  - evaluate() — registra ambiente y delega al dispatcher
+  - initializeEnvironmentDeclarations()
+  - evaluateCoreStatement() — switch de 3 casos con acceso a environment
+  - evaluateVariableDeclaration()
+  - evaluateAssignment()
+  - evaluateCallStatement() — ahora sin lógica de resolución
+  - evaluateBlock() — delega al dispatcher
+  - evaluateExpression() — delega a expressionEvaluator
+
+Sin invokeFunction ni invokeProcedure.
+Sin conocimiento del orden de resolución builtin → usuario.
+
+Líneas esperadas: ~130 (vs 195 actuales)
+
+── MÉTRICAS DE ÉXITO ───────────────────────────────────────────────────────────
+
+  ✓ callableInvoker.ts creado en callables/
+  ✓ callables/index.ts exporta CallableInvoker
+  ✓ evaluator.ts no contiene invokeFunction ni invokeProcedure como métodos
+  ✓ evaluator.ts no importa BuiltinRegistry directamente
+    (lo usa solo para pasarlo al invoker — puede quedarse el import)
+  ✓ Los mensajes de error de invocación no cambiaron ni una letra
+  ✓ vitest run → 37/37
+  ✓ tsc --noEmit → 0 errores
+
+── ARCHIVOS QUE NO SE TOCAN ────────────────────────────────────────────────────
+
+  - callableExecutor.ts       → sin cambios
+  - callableRegistry.ts       → sin cambios
+  - statementDispatcher.ts    → sin cambios
+  - Todos los evaluators/     → sin cambios
+  - builtins/, environment/   → sin cambios
+  - context/, types/          → sin cambios
+  - errorMessages.ts          → sin cambios
+  - Tests                     → sin cambios
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
+
+================================================================================
+PLAN DE REFACTORIZACIÓN — CONSOLIDACIÓN DE MENSAJES DE ERROR
+Scope: errorMessages.ts + objetos Errors locales por módulo
+Prerequisito: Plan CallableInvoker completo (37/37 tests passing, tsc clean)
+================================================================================
+
+── OBJETIVO ────────────────────────────────────────────────────────────────────
+
+Eliminar los strings de error hardcodeados dispersos en el código sin crear
+un archivo global monolítico que acople todos los módulos entre sí.
+
+Estrategia dual:
+  A) Mensajes ESTÁTICOS sin interpolación → errorMessages.ts (centralizado)
+  B) Mensajes DINÁMICOS con interpolación → objeto Errors local por módulo
+
+Resultado: cada mensaje de error tiene exactamente un lugar de definición,
+           cercano a donde se usa, sin dependencias globales innecesarias.
+
+── REGLA CRÍTICA — NO NEGOCIABLE ───────────────────────────────────────────────
+
+Los tests validan substrings exactos de los mensajes de error.
+NINGÚN texto de error se modifica. Solo se mueve su definición.
+
+Antes de tocar cualquier mensaje, identificar si existe un test que lo valide:
+  grep -r "mensaje parcial" packages/core/src/__tests__/
+
+Si existe → mover con cuidado y verificar que el substring sigue presente.
+Si no existe → mover libremente.
+
+── CLASIFICACIÓN COMPLETA DE MENSAJES ──────────────────────────────────────────
+
+GRUPO A — Estáticos, van a errorMessages.ts:
+
+  Origen: evaluator.ts / statementDispatcher.ts
+    → "Nodo de sentencia desconocido: ..."
+       (tiene interpolación del tipo, se convierte en factory)
+
+  Origen: expressionEvaluator.ts
+    → "Expresión desconocida"         (estático)
+    → "Operador unario no soportado"  (estático o con tipo interpolado)
+    → "Operador binario no soportado" (estático o con tipo interpolado)
+
+GRUPO B — Dinámicos, permanecen locales con objeto Errors por módulo:
+
+  callableInvoker.ts:
+    → `'${name}' es un procedimiento y no puede usarse dentro de una expresión.`
+    → `No existe una función llamada '${name}'.`
+    → `'${name}' es una función y debe usarse dentro de una expresión.`
+    → `No existe un procedimiento llamado '${name}'.`
+    → `No existe una función o procedimiento llamado '${name}'.`
+
+  typeValidator.ts:
+    → Variantes de "Tipo incompatible en..." con nombre de variable y tipo
+
+  typeCoercer.ts:
+    → Variantes de "Valor incompatible para..." con nombre y tipo esperado
+
+  environment.ts:
+    → `No se puede reasignar la constante '${name}'.`
+    → `Variable no definida: '${name}'.`
+
+  callableRegistry.ts:
+    → `El nombre '${name}' ya fue declarado como función o procedimiento.`
+
+  valueUtils.ts:
+    → Mensajes de valor nulo, conversión a número, comparación no numérica
+
+  builtins/registry.ts:
+    → `La builtin '${name}' ya está registrada.`
+
+── FASE 1: AUDITORÍA PREVIA ────────────────────────────────────────────────────
+
+Antes de mover nada, ejecutar:
+
+  grep -rn "throw new RuntimeError" packages/core/src/interpreter/ --include="*.ts"
+
+Documentar la lista completa. Comparar contra lo que ya está en errorMessages.ts.
+Identificar cuáles tienen tests asociados:
+
+  grep -rn "toThrow\|toContain\|message" packages/core/src/__tests__/ --include="*.ts"
+
+Este paso no modifica ningún archivo. Solo confirma el inventario real.
+
+Ejecutar: vitest run → 37/37 (baseline antes de cualquier cambio)
+
+── FASE 2: ACTUALIZAR errorMessages.ts (Grupo A) ───────────────────────────────
+
+2.1 Revisar errorMessages.ts actual e identificar qué constantes ya existen.
+
+2.2 Agregar las constantes/factories del Grupo A que falten.
+
+    Patrón para estáticos:
+      export const UNKNOWN_STATEMENT = (type: string) =>
+        `Nodo de sentencia desconocido: ${type}`
+
+    Patrón para completamente estáticos:
+      export const UNKNOWN_EXPRESSION = 'Expresión desconocida'
+      export const UNSUPPORTED_UNARY_OPERATOR = (op: string) =>
+        `Operador unario no soportado: '${op}'`
+      export const UNSUPPORTED_BINARY_OPERATOR = (op: string) =>
+        `Operador binario no soportado: '${op}'`
+
+    NOTA: si el mensaje original no tenía el tipo/operador interpolado,
+    NO agregarlo ahora. Copiar el string exacto como está en el código.
+
+2.3 Actualizar los archivos que usaban esos strings hardcodeados para
+    importar desde errorMessages.ts:
+
+    Archivos a actualizar:
+      - orchestrator/evaluator.ts
+      - orchestrator/statementDispatcher.ts
+      - evaluators/expressionEvaluator.ts
+
+2.4 Ejecutar: vitest run → 37/37
+2.5 Ejecutar: tsc --noEmit → 0 errores
+
+── FASE 3: OBJETOS Errors LOCALES (Grupo B) ────────────────────────────────────
+
+Para cada archivo del Grupo B, aplicar el mismo patrón:
+
+  3.a Agregar un objeto const Errors al tope del archivo (después de imports)
+  3.b Mover los strings hardcodeados al objeto como funciones de factory
+  3.c Reemplazar cada `throw new RuntimeError(\`...\`)` por
+      `throw new RuntimeError(Errors.nombreDescriptivo(args))`
+  3.d Ejecutar vitest run después de cada archivo modificado
+
+Patrón estándar:
+
+  const Errors = {
+    notAFunction: (name: string) =>
+      `No existe una función llamada '${name}'.`,
+    isProcedure: (name: string) =>
+      `'${name}' es un procedimiento y no puede usarse dentro de una expresión.`,
+  } as const
+
+El objeto Errors NO se exporta. Es privado al módulo.
+Esto evita el acoplamiento global y mantiene cada dominio autocontenido.
+
+Orden de archivos a procesar (de menor a mayor riesgo):
+
+  3.1 builtins/registry.ts
+      - 1 mensaje: builtin ya registrada
+      - Riesgo: muy bajo (rara vez cubierto por tests de integración)
+      - Ejecutar: vitest run → 37/37
+
+  3.2 callableRegistry.ts
+      - 1 mensaje: nombre ya declarado
+      - Ejecutar: vitest run → 37/37
+
+  3.3 environment.ts
+      - 2 mensajes: constante reasignada, variable no definida
+      - ATENCIÓN: "Variable no definida" es casi seguro que tiene tests
+      - Verificar substring antes de mover:
+          grep -rn "no definida\|reasignar" packages/core/src/__tests__/
+      - Ejecutar: vitest run → 37/37
+
+  3.4 valueUtils.ts
+      - 3 mensajes: valor nulo, conversión a número, comparación no numérica
+      - Ejecutar: vitest run → 37/37
+
+  3.5 callableInvoker.ts
+      - 5 mensajes: todos los de invocación de funciones/procedimientos
+      - ATENCIÓN: estos mensajes son los más probables de tener tests
+      - Verificar substrings antes de mover:
+          grep -rn "procedimiento\|función llamada\|expresión" packages/core/src/__tests__/
+      - Ejecutar: vitest run → 37/37
+
+  3.6 typeValidator.ts
+      - 2+ mensajes: incompatibilidad de tipos
+      - Ejecutar: vitest run → 37/37
+
+  3.7 typeCoercer.ts
+      - 2+ mensajes: coerción inválida
+      - Ejecutar: vitest run → 37/37
+
+── FASE 4: VERIFICACIÓN FINAL ──────────────────────────────────────────────────
+
+4.1 Confirmar que no quedan strings de error hardcodeados fuera de sus
+    objetos Errors o de errorMessages.ts:
+
+      grep -rn "throw new RuntimeError(\`" packages/core/src/interpreter/ --include="*.ts"
+
+    Cada resultado debe mostrar una llamada a Errors.algo() o a una
+    constante de errorMessages.ts — no un string literal inline.
+
+4.2 Confirmar que el objeto Errors no se exporta en ningún módulo:
+
+      grep -rn "export.*Errors" packages/core/src/interpreter/ --include="*.ts"
+
+    Resultado esperado: 0 líneas.
+
+4.3 Ejecutar vitest run → 37/37
+4.4 Ejecutar tsc --noEmit → 0 errores
+4.5 Revisar diff final: solo deben aparecer movimientos de strings,
+    nunca cambios en el texto de los mensajes.
+
+── RESULTADO FINAL ─────────────────────────────────────────────────────────────
+
+  errorMessages.ts     → mensajes estáticos globales (~4 constantes/factories nuevas)
+  Cada módulo afectado → objeto Errors local privado con sus factories dinámicas
+  Cero strings de error hardcodeados inline en throws
+
+  Archivos modificados: ~9
+  Archivos nuevos: 0
+  Cambios de comportamiento: ninguno
+  Tests: 37/37
+
+── MÉTRICAS DE ÉXITO ───────────────────────────────────────────────────────────
+
+  ✓ grep "throw new RuntimeError(\`[^E]" → 0 resultados
+    (todo throw usa Errors.algo() o una constante, no literal inline)
+  ✓ Ningún objeto Errors exportado fuera de su módulo
+  ✓ errorMessages.ts no supera 60 líneas (no se convierte en dump global)
+  ✓ vitest run → 37/37
+  ✓ tsc --noEmit → 0 errores
+  ✓ Ningún substring de error modificado respecto al baseline
+
+── ARCHIVOS QUE NO SE TOCAN ────────────────────────────────────────────────────
+
+  - statementDispatcher.ts   → solo importa de errorMessages.ts (Fase 2)
+  - callableExecutor.ts      → sin cambios
+  - controlFlowEvaluator.ts  → sin cambios (verificar si tiene throws propios)
+  - doWhileEvaluator.ts      → sin cambios
+  - switchEvaluator.ts       → sin cambios
+  - ioEvaluator.ts           → sin cambios
+  - loopGuard.ts             → sin cambios
+  - Tests                    → sin cambios en ninguna fase
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
+
+
+================================================================================
+PLAN DE REFACTORIZACIÓN — ELIMINACIÓN DE DUPLICADO evaluatorContext.ts
+Scope: types/evaluatorContext.ts → eliminar; context/types/ → fuente de verdad
+Prerequisito: Plan ErrorMessages completo (37/37 tests passing, tsc clean)
+================================================================================
+
+── DIAGNÓSTICO ─────────────────────────────────────────────────────────────────
+
+evaluatorContext.ts existe en dos ubicaciones:
+
+  CORRECTA  → interpreter/context/types/evaluatorContext.ts
+  DUPLICADO → interpreter/types/evaluatorContext.ts
+
+La ubicación correcta es context/types/ porque:
+  - evaluatorContext.ts define la interfaz EvaluatorContext
+  - EvaluatorContext es el contrato entre contextFactory y los subevaluadores
+  - Su dominio es el contexto de evaluación, no el sistema de tipos del lenguaje
+  - El dominio de types/ es typeValidator, typeCoercer, typeRules, typeChecker
+    — todos relacionados con el sistema de tipos del pseudocódigo, no con
+    la infraestructura del evaluador
+
+La copia en types/ es el error. Se elimina.
+
+── REGLA CRÍTICA ───────────────────────────────────────────────────────────────
+
+Antes de eliminar, confirmar que NINGÚN archivo importa desde la ubicación
+incorrecta. Si algún archivo importa desde types/evaluatorContext, ese import
+se actualiza PRIMERO. Nunca al revés.
+
+── FASE 1: AUDITORÍA DE IMPORTS ────────────────────────────────────────────────
+
+1.1 Identificar todos los archivos que importan evaluatorContext desde
+    cualquiera de las dos ubicaciones:
+
+      grep -rn "evaluatorContext" packages/core/src/interpreter/ --include="*.ts"
+
+    Resultado esperado: una lista de archivos con su ruta de import actual.
+    Clasificar cada resultado en:
+      - Importa desde context/types/evaluatorContext  → correcto, no tocar
+      - Importa desde types/evaluatorContext          → necesita actualización
+
+1.2 Verificar que ambos archivos son idénticos antes de proceder:
+
+      diff \
+        packages/core/src/interpreter/context/types/evaluatorContext.ts \
+        packages/core/src/interpreter/types/evaluatorContext.ts
+
+    Si el diff muestra diferencias → DETENER. Analizar cuál tiene el
+    contenido más actualizado y consolidar manualmente antes de continuar.
+    Si el diff está vacío → son idénticos, proceder con seguridad.
+
+1.3 Ejecutar: vitest run → confirmar baseline 37/37
+
+── FASE 2: ACTUALIZAR IMPORTS INCORRECTOS ──────────────────────────────────────
+
+Por cada archivo que importa desde types/evaluatorContext:
+
+2.1 Actualizar el import para que apunte a context/types/evaluatorContext.
+
+    Ejemplo de cambio:
+
+      // Antes (incorrecto)
+      import type { EvaluatorContext } from '../types/evaluatorContext'
+
+      // Después (correcto)
+      import type { EvaluatorContext } from '../context/types/evaluatorContext'
+
+    NOTA: la ruta relativa depende de dónde vive el archivo que importa.
+    Calcular el path relativo correcto para cada caso.
+
+2.2 Ejecutar: tsc --noEmit después de cada archivo actualizado.
+    No acumular cambios — verificar uno por uno.
+
+2.3 Ejecutar: vitest run → 37/37 antes de continuar a Fase 3.
+
+── FASE 3: ACTUALIZAR context/index.ts ─────────────────────────────────────────
+
+3.1 Verificar que context/index.ts ya reexporta EvaluatorContext:
+
+      grep "evaluatorContext" packages/core/src/interpreter/context/index.ts
+
+    Si ya lo reexporta → no tocar.
+    Si no lo reexporta → agregar:
+
+      export type { EvaluatorContext } from './types/evaluatorContext'
+
+    Esto permite que los importadores usen el barrel en lugar del path
+    profundo cuando lo prefieran:
+
+      import type { EvaluatorContext } from '../context'
+
+3.2 Ejecutar: tsc --noEmit → 0 errores
+
+── FASE 4: ELIMINAR EL DUPLICADO ───────────────────────────────────────────────
+
+4.1 Solo después de que Fase 2 y Fase 3 pasen sin errores:
+
+      rm packages/core/src/interpreter/types/evaluatorContext.ts
+
+4.2 Ejecutar inmediatamente:
+
+      tsc --noEmit
+
+    Si aparece algún error de "Cannot find module" → hay un import que
+    se escapó del grep en Fase 1. Localizarlo y corregirlo.
+
+4.3 Ejecutar: vitest run → 37/37
+
+── FASE 5: VERIFICACIÓN FINAL ──────────────────────────────────────────────────
+
+5.1 Confirmar que no quedan referencias a la ubicación eliminada:
+
+      grep -rn "types/evaluatorContext" packages/core/src/interpreter/ --include="*.ts"
+
+    Resultado esperado: 0 líneas.
+    Si aparece alguna → es un import desde context/types/evaluatorContext
+    que usa el path completo interno, lo cual es válido.
+    Verificar que ninguno apunta a la raíz de types/:
+
+      grep -rn "from.*['\"]../types/evaluatorContext" packages/core/src/ --include="*.ts"
+      grep -rn "from.*['\"]./types/evaluatorContext" packages/core/src/ --include="*.ts"
+
+    Ambos deben devolver 0 resultados.
+
+5.2 Confirmar que types/ no quedó con responsabilidades mezcladas:
+
+    La carpeta types/ debe contener únicamente:
+      - typeValidator.ts
+      - typeCoercer.ts
+      - typeRules.ts
+      - typeChecker.ts
+      - index.ts
+
+    Si quedó evaluatorContext.ts u otro archivo de infraestructura del
+    evaluador → moverlo a su dominio correcto.
+
+5.3 Ejecutar: vitest run → 37/37
+5.4 Ejecutar: tsc --noEmit → 0 errores
+
+── RESULTADO FINAL ─────────────────────────────────────────────────────────────
+
+  Antes:
+    context/types/evaluatorContext.ts   ← fuente de verdad
+    types/evaluatorContext.ts           ← duplicado (ELIMINADO)
+
+  Después:
+    context/types/evaluatorContext.ts   ← única fuente de verdad
+    types/                              ← solo sistema de tipos del lenguaje
+
+  Archivos modificados: los que tenían imports incorrectos (~2 a 5 archivos)
+  Archivos eliminados: 1 (types/evaluatorContext.ts)
+  Archivos nuevos: 0
+  Cambios de comportamiento: ninguno
+  Tests: 37/37
+
+── MÉTRICAS DE ÉXITO ───────────────────────────────────────────────────────────
+
+  ✓ diff entre las dos versiones fue vacío antes de eliminar
+  ✓ grep "from.*types/evaluatorContext" → 0 resultados post-eliminación
+  ✓ types/ contiene solo módulos del sistema de tipos del lenguaje
+  ✓ context/index.ts reexporta EvaluatorContext
+  ✓ vitest run → 37/37
+  ✓ tsc --noEmit → 0 errores
+
+── ARCHIVOS QUE NO SE TOCAN ────────────────────────────────────────────────────
+
+  - context/types/evaluatorContext.ts  → fuente de verdad, sin modificar
+  - context/contextFactory.ts          → sin cambios
+  - types/typeValidator.ts             → sin cambios
+  - types/typeCoercer.ts               → sin cambios
+  - types/typeRules.ts                 → sin cambios
+  - types/typeChecker.ts               → sin cambios
+  - Todos los evaluators/              → sin cambios
+  - Tests                              → sin cambios
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
