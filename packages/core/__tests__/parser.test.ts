@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Lexer } from '../src/lexer/lexer'
-import { Parser } from '../src/parser/parser'
+import { Parser } from '../src/parser'
 
 describe('Parser', () => {
   it('parsea una asignación y una escritura', () => {
@@ -181,5 +181,68 @@ Proceso
 FinAccion`
 
     expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow('No se permite shadowing')
+  })
+
+  it('rechaza función sin Proceso', () => {
+    const source = `Accion fnSinProceso : ES
+Ambiente
+  Funcion f() : Entero
+  FinFuncion
+Proceso
+FinAccion`
+
+    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow('Se esperaba \'Proceso\' en la función')
+  })
+
+  it('rechaza parámetro sin tipo', () => {
+    const source = `Accion paramSinTipo : ES
+Ambiente
+  Funcion f(x) : Entero
+  Proceso
+    f := 1
+  FinFuncion
+Proceso
+FinAccion`
+
+    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow("Se esperaba ':' al declarar parámetro")
+  })
+
+  it('función simple parsea correctamente', () => {
+    const source = `Accion main : ES
+Ambiente
+  Funcion doble(n : Entero) : Entero
+    doble := n * 2
+  FinFuncion
+Proceso
+  Escribir(doble(5))
+FinAccion`
+
+    const tokens = new Lexer(source).tokenize()
+    const action = new Parser(tokens).parse()
+    const func = action.ambiente.functions[0]
+
+    expect(func.ambiente.constants).toHaveLength(0)
+    expect(func.ambiente.variables).toHaveLength(0)
+    expect(func.proceso).toHaveLength(1)
+    expect(func.proceso[0].type).toBe('Assignment')
+  })
+
+  it('procedimiento simple parsea correctamente', () => {
+    const source = `Accion main : ES
+Ambiente
+  Procedimiento saludar(nombre : Alfanumerico)
+    Escribir("Hola, ", nombre)
+  FinProcedimiento
+Proceso
+  saludar("Mundo")
+FinAccion`
+
+    const tokens = new Lexer(source).tokenize()
+    const action = new Parser(tokens).parse()
+    const proc = action.ambiente.procedures[0]
+
+    expect(proc.ambiente.constants).toHaveLength(0)
+    expect(proc.proceso).toHaveLength(1)
+    expect(proc.proceso[0].type).toBe('CallStatement')
   })
 })

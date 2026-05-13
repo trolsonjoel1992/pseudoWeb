@@ -37,10 +37,9 @@ export class CallableExecutor {
     try {
       this.bindParameters(declaration.parameters, args, callEnvironment)
 
-      if (declaration.ambiente) {
-        localRegistry.registerFromEnvironment(declaration.ambiente)
-        this.host.initializeEnvironmentDeclarations(declaration.ambiente)
-      }
+      // `ambiente` está normalizado y siempre presente (posible EMPTY_ENVIRONMENT_BLOCK)
+      localRegistry.registerFromEnvironment(declaration.ambiente)
+      this.host.initializeEnvironmentDeclarations(declaration.ambiente)
 
       callEnvironment.define(declaration.name, null, declaration.returnType)
 
@@ -71,10 +70,9 @@ export class CallableExecutor {
     try {
       this.bindParameters(declaration.parameters, args, callEnvironment)
 
-      if (declaration.ambiente) {
-        localRegistry.registerFromEnvironment(declaration.ambiente)
-        this.host.initializeEnvironmentDeclarations(declaration.ambiente)
-      }
+      // `ambiente` está normalizado y siempre presente (posible EMPTY_ENVIRONMENT_BLOCK)
+      localRegistry.registerFromEnvironment(declaration.ambiente)
+      this.host.initializeEnvironmentDeclarations(declaration.ambiente)
 
       await this.host.evaluateBlock(declaration.proceso)
     } finally {

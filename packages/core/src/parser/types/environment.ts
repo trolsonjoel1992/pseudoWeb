@@ -18,3 +18,11 @@ export interface ActionNode extends Node {
   ambiente: EnvironmentBlockNode
   proceso: StatementNode[]
 }
+
+export const EMPTY_ENVIRONMENT_BLOCK: EnvironmentBlockNode = {
+  type: 'EnvironmentBlock',
+  constants: [],
+  variables: [],
+  functions: [],
+  procedures: [],
+}

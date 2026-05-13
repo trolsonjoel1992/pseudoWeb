@@ -38,6 +38,6 @@ export interface ProcedureDeclarationNode extends Node {
   type: 'ProcedureDeclaration'
   name: string
   parameters: ParameterNode[]
-  ambiente?: EnvironmentBlockNode
+  ambiente: EnvironmentBlockNode
   proceso: StatementNode[]
 }
