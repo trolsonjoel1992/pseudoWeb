@@ -1,0 +1,61 @@
+import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
+
+/**
+ * Local Errors - Dynamic value handling error messages
+ * These messages require interpolation with values or contexts, so they live locally
+ */
+const Errors = {
+  NULL_VALUE_NOT_ALLOWED: (operation: string) => `No se puede usar un valor nulo en ${operation}.`,
+  CANNOT_CONVERT_TO_NUMBER: (value: unknown) => `No se puede convertir a número: ${String(value)}`,
+  CANNOT_COMPARE_NON_NUMERIC: (value: unknown) => `No se puede comparar un valor no numérico: ${String(value)}`,
+} as const
+
+export function stringifyValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  return String(value)
+}
+
+export function isTruthy(value: unknown): boolean {
+  return Boolean(value)
+}
+
+export function assertDefinedValue(value: unknown, operation: string): void {
+  if (value === null || value === undefined) {
+    throw new RuntimeError({
+      code: ErrorCode.RUN_INVALID_ARGUMENT,
+      message: Errors.NULL_VALUE_NOT_ALLOWED(operation),
+      module: 'interpreter',
+      context: { operation },
+    })
+  }
+}
+
+export function toNumber(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) {
+    throw new RuntimeError({
+      code: ErrorCode.RUN_TYPE_MISMATCH,
+      message: Errors.CANNOT_CONVERT_TO_NUMBER(value),
+      module: 'interpreter',
+      context: { value },
+    })
+  }
+
+  return value
+}
+
+export function toComparable(value: unknown): string | number {
+  if (typeof value === 'number') {
+    return value
+  }
+  throw new RuntimeError({
+    code: ErrorCode.RUN_TYPE_MISMATCH,
+    message: Errors.CANNOT_COMPARE_NON_NUMERIC(value),
+    module: 'interpreter',
+    context: { value },
+  })
+}

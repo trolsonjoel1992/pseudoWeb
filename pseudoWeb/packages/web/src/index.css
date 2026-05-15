@@ -1,0 +1,37 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Manrope:wght@400;500;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  html,
+  body,
+  #root {
+    @apply min-h-screen;
+  }
+
+  body {
+    @apply m-0 bg-[#faf8ff] font-body text-slate-900 antialiased;
+  }
+
+  a {
+    @apply no-underline;
+  }
+
+  button,
+  textarea,
+  input {
+    font: inherit;
+  }
+
+  button:focus-visible,
+  textarea:focus-visible,
+  input:focus-visible {
+    @apply outline-none ring-2 ring-blue-600 ring-offset-2;
+  }
+}
