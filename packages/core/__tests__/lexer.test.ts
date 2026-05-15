@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Lexer } from '../src/lexer'
+import { ErrorCode } from '../src/errors'
 import { TokenType } from '../src/lexer/types'
 
 describe('Lexer', () => {
@@ -40,7 +41,12 @@ describe('Lexer', () => {
   })
 
   it('falla con comentario sin cerrar', () => {
-    expect(() => new Lexer('/* comentario').tokenize()).toThrow('Comentario de bloque sin cerrar')
+    try {
+      new Lexer('/* comentario').tokenize()
+      throw new Error('Se esperaba que tokenize lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.LEX_UNTERMINATED_STRING)
+    }
   })
 
   it('reconoce DIV/MOD en mayúscula y rechaza minúscula como operador', () => {

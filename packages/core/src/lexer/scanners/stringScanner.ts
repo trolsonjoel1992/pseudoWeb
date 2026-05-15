@@ -1,5 +1,7 @@
 import { ERR_UNTERMINATED_STRING } from '../constants/index.js'
 import { LexerError, TokenType } from '../types/index.js'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import type { ScannerContext } from '../types/index.js'
 
 type Literal = string | number | boolean | null
@@ -15,7 +17,14 @@ export function scanStringToken(context: StringScannerContext, quote: '"' | "'")
 
   while (!context.isAtEnd() && context.peek() !== quote) {
     if (context.peek() === '\n') {
-      throw new LexerError(ERR_UNTERMINATED_STRING(context.line, context.column), context.line, context.column)
+      throw new LexerError({
+        code: ErrorCode.LEX_UNTERMINATED_STRING,
+        message: buildMessage(ErrorCode.LEX_UNTERMINATED_STRING),
+        line: context.line,
+        column: context.column,
+        module: 'lexer',
+        context: { char: context.peek() },
+      })
     }
 
     if (context.peek() === '\\' && !context.isAtEnd()) {
@@ -52,7 +61,14 @@ export function scanStringToken(context: StringScannerContext, quote: '"' | "'")
   }
 
   if (context.isAtEnd()) {
-    throw new LexerError(ERR_UNTERMINATED_STRING(context.line, context.column), context.line, context.column)
+    throw new LexerError({
+      code: ErrorCode.LEX_UNTERMINATED_STRING,
+      message: buildMessage(ErrorCode.LEX_UNTERMINATED_STRING),
+      line: context.line,
+      column: context.column,
+      module: 'lexer',
+      context: {},
+    })
   }
 
   context.advance()

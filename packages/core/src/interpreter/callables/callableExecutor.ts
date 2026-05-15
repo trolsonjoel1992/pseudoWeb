@@ -1,5 +1,7 @@
 import type { FunctionDeclarationNode, ProcedureDeclarationNode, StatementNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import { CallableRegistry } from './callableRegistry'
 import type { Environment } from '../environment/environment'
@@ -100,6 +102,11 @@ export class CallableExecutor {
       return
     }
 
-    throw new RuntimeError(ERROR_MESSAGES.INVALID_ARGUMENT_COUNT(name, expected, received))
+    throw new RuntimeError({
+      code: ErrorCode.RUN_INVALID_ARGUMENT,
+      message: ERROR_MESSAGES.INVALID_ARGUMENT_COUNT(name, expected, received),
+      module: 'interpreter',
+      context: { name, expected, received },
+    })
   }
 }

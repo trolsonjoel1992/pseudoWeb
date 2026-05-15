@@ -1,5 +1,7 @@
 import { ERR_UNEXPECTED_CHARACTER } from '../constants/index.js'
 import { LexerError, TokenType } from '../types/index.js'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import type { ScannerContext } from '../types/index.js'
 
 type Literal = string | number | boolean | null
@@ -115,5 +117,12 @@ export function scanOperatorToken(context: OperatorScannerContext, char: string)
       break
   }
 
-  throw new LexerError(ERR_UNEXPECTED_CHARACTER(char, line, column), line, column)
+  throw new LexerError({
+    code: ErrorCode.LEX_UNEXPECTED_CHAR,
+    message: buildMessage(ErrorCode.LEX_UNEXPECTED_CHAR, char),
+    line,
+    column,
+    module: 'lexer',
+    context: { char },
+  })
 }

@@ -3,6 +3,7 @@ import { Environment } from '../src/interpreter/environment'
 import { Evaluator } from '../src/interpreter/orchestrator'
 import { Lexer } from '../src/lexer'
 import { Parser } from '../src/parser'
+import { ErrorCode } from '../src/errors'
 
 async function execute(source: string, inputValues: unknown[] = []) {
   const tokens = new Lexer(source).tokenize()
@@ -91,58 +92,88 @@ FinAccion`, [7, 'hola'])
   })
 
   it('rechaza tipos incompatibles en Leer', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
   a : Entero
 Proceso
   Leer(a)
-FinAccion`, ['hola'])).rejects.toThrow("Valor incompatible para 'a'. Se esperaba Entero.")
+FinAccion`, ['hola'])
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_TYPE_MISMATCH)
+    }
   })
 
   it('falla cuando hay division por cero', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
   a : Entero
 Proceso
   a := 10 / 0
   Escribir(a)
-FinAccion`)).rejects.toThrow('División por cero.')
+FinAccion`)
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_DIVISION_BY_ZERO)
+    }
   })
 
   it('rechaza reasignar una constante', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
   PI = 3
 Proceso
   PI := 4
-FinAccion`)).rejects.toThrow("No se puede reasignar la constante 'PI'.")
+FinAccion`)
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_INVALID_ARGUMENT)
+    }
   })
 
   it('rechaza operaciones con valores nulos', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
   a, b : Entero
 Proceso
   b := a + 1
-FinAccion`)).rejects.toThrow('No se puede usar un valor nulo')
+FinAccion`)
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_INVALID_ARGUMENT)
+    }
   })
 
   it('falla cuando se asigna a una variable no declarada', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
 Proceso
   a := 1
-FinAccion`)).rejects.toThrow("Variable 'a' no declarada")
+FinAccion`)
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_UNDEFINED_IDENTIFIER)
+    }
   })
 
   it('falla en bucle Mientras infinito por limite de seguridad', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
 Proceso
   Mientras Verdadero Hacer
     Escribir("x")
   FinMientras
-FinAccion`)).rejects.toThrow('Bucle Mientras excedió el límite de seguridad.')
+FinAccion`)
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_STACK_OVERFLOW)
+    }
   })
 
   it('ejecuta Repetir HastaQue', async () => {
@@ -225,7 +256,8 @@ FinAccion`)
   })
 
   it('rechaza tipos incompatibles en parámetros de función', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
   resultado : Entero
   Funcion doble(x : Entero) : Entero
@@ -234,7 +266,11 @@ Ambiente
   FinFuncion
 Proceso
   resultado := doble("3")
-FinAccion`)).rejects.toThrow("Tipo incompatible en el parámetro 'x'. Se esperaba Entero.")
+FinAccion`)
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_TYPE_MISMATCH)
+    }
   })
 
   it('ejecuta REDOND como función integrada', async () => {
@@ -251,25 +287,36 @@ FinAccion`)
   })
 
   it('valida longitud de AN(n) en asignación', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
   nombre : AN(3)
 Proceso
   nombre := "abcd"
-FinAccion`)).rejects.toThrow('Se esperaba AN(3)')
+FinAccion`)
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_TYPE_MISMATCH)
+    }
   })
 
   it('valida longitud de AN(n) en Leer', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
   nombre : AN(3)
 Proceso
   Leer(nombre)
-FinAccion`, ['abcd'])).rejects.toThrow('Se esperaba AN(3)')
+FinAccion`, ['abcd'])
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_TYPE_MISMATCH)
+    }
   })
 
   it('rechaza incompatibilidad de tipos en Segun', async () => {
-    await expect(execute(`Accion prueba : ES
+    try {
+      await execute(`Accion prueba : ES
 Ambiente
   opcion : Entero
 Proceso
@@ -277,6 +324,10 @@ Proceso
   Segun opcion Hacer
     "1": Escribir("uno")
   FinSegun
-FinAccion`)).rejects.toThrow('el tipo de la expresión y el tipo del caso deben coincidir')
+FinAccion`)
+      throw new Error('Se esperaba que execute lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.RUN_TYPE_MISMATCH)
+    }
   })
 })

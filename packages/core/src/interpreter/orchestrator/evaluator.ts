@@ -8,6 +8,8 @@ import type {
   VariableDeclarationNode,
 } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import { Environment } from '../environment/environment'
 import { EnvironmentManager } from '../environment/environmentManager'
@@ -127,7 +129,12 @@ export class Evaluator {
         await this.evaluateCallStatement(node)
         return
       default:
-        throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_STATEMENT_NODE((node as { type: string }).type))
+        throw new RuntimeError({
+          code: ErrorCode.GEN_UNKNOWN,
+          message: ERROR_MESSAGES.UNKNOWN_STATEMENT_NODE((node as { type: string }).type),
+          module: 'interpreter',
+          context: { nodeType: (node as { type: string }).type },
+        })
     }
   }
 
@@ -165,7 +172,12 @@ export class Evaluator {
       return
     }
 
-    throw new RuntimeError(ERROR_MESSAGES.NO_FUNCTION_OR_PROCEDURE(node.call.name))
+    throw new RuntimeError({
+      code: ErrorCode.RUN_UNDEFINED_IDENTIFIER,
+      message: ERROR_MESSAGES.NO_FUNCTION_OR_PROCEDURE(node.call.name),
+      module: 'interpreter',
+      context: { name: node.call.name },
+    })
   }
 
   private async evaluateBlock(statements: StatementNode[]): Promise<void> {

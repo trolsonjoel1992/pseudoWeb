@@ -1,4 +1,5 @@
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 
 export class LoopGuard {
@@ -10,7 +11,12 @@ export class LoopGuard {
   public checkIteration(loopType: 'while' | 'for' | 'do-while' | 'generic' = 'generic'): void {
     this.iterations += 1
     if (this.iterations > this.limit) {
-      throw new RuntimeError(ERROR_MESSAGES.LOOP_EXCESS(loopType, this.limit))
+      throw new RuntimeError({
+        code: ErrorCode.RUN_STACK_OVERFLOW,
+        message: ERROR_MESSAGES.LOOP_EXCESS(loopType, this.limit),
+        module: 'interpreter',
+        context: { loopType, limit: this.limit },
+      })
     }
   }
 

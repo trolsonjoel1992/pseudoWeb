@@ -1,4 +1,6 @@
 import { RuntimeError } from "../../errors";
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import type { DataType } from "../../parser/ast";
 
 /**
@@ -48,7 +50,12 @@ export class Environment {
     assign(name: string, value: unknown): void {
         if (this.values.has(name)) {
             if (this.constants.has(name)) {
-                throw new RuntimeError(Errors.CANNOT_REASSIGN_CONSTANT(name));
+                throw new RuntimeError({
+                    code: ErrorCode.RUN_INVALID_ARGUMENT,
+                    message: Errors.CANNOT_REASSIGN_CONSTANT(name),
+                    module: 'interpreter',
+                    context: { name },
+                });
             }
             this.values.set(name, value);
             return;
@@ -59,7 +66,12 @@ export class Environment {
             return;
         }
 
-        throw new RuntimeError(Errors.VARIABLE_NOT_DEFINED(name));
+        throw new RuntimeError({
+            code: ErrorCode.RUN_UNDEFINED_IDENTIFIER,
+            message: Errors.VARIABLE_NOT_DEFINED(name),
+            module: 'interpreter',
+            context: { name },
+        });
     }
 
     /**
@@ -78,7 +90,12 @@ export class Environment {
             return this.enclosing.lookup(name);
         }
 
-        throw new RuntimeError(Errors.VARIABLE_NOT_DEFINED(name));
+        throw new RuntimeError({
+            code: ErrorCode.RUN_UNDEFINED_IDENTIFIER,
+            message: Errors.VARIABLE_NOT_DEFINED(name),
+            module: 'interpreter',
+            context: { name },
+        });
     }
 
     lookupType(name: string): DataType | null {

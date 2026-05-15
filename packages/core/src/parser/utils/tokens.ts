@@ -1,4 +1,6 @@
 import { ParserError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import type { Token } from '../../lexer/types'
 import { TokenType } from '../../lexer/types'
 import type { ParserContext } from '../state'
@@ -71,5 +73,13 @@ export function skipSeparators(state: ParserContext): void {
 
 export function parserError(_state: ParserContext, token: Token, message: string): ParserError {
   const location = token.type === TokenType.EOF ? ERR_LOCATION_EOF : ERR_LOCATION_TOKEN(token.lexeme)
-  return new ParserError(`${message} ${location}`, token.line, token.column)
+  const fullMessage = `${message} ${location}`
+  return new ParserError({
+    code: ErrorCode.PAR_UNEXPECTED_TOKEN,
+    message: fullMessage,
+    line: token.line,
+    column: token.column,
+    module: 'parser',
+    context: { token: token.type, lexeme: token.lexeme },
+  })
 }

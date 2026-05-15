@@ -12,6 +12,8 @@ import type {
   WriteNode,
 } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import type { EvaluatorContext } from '../types/evaluatorContext'
 import { evaluateDoWhileNode } from '../evaluators/doWhileEvaluator'
@@ -91,7 +93,12 @@ export class StatementDispatcher {
     }
 
     // Unknown statement type
-    throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_STATEMENT_NODE((node as { type: string }).type))
+    throw new RuntimeError({
+      code: ErrorCode.GEN_UNKNOWN,
+      message: ERROR_MESSAGES.UNKNOWN_STATEMENT_NODE((node as { type: string }).type),
+      module: 'interpreter',
+      context: { nodeType: (node as { type: string }).type },
+    })
   }
 
   public async dispatchBlock(statements: StatementNode[]): Promise<void> {

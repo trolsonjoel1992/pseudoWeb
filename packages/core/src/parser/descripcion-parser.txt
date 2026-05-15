@@ -2,14 +2,9 @@ Descripcion detallada de la carpeta parser
 
 1. Proposito general
 
-La carpeta src/parser contiene el analizador sintáctico (parser) del lenguaje pseudoWeb dentro del paquete core.
-Su responsabilidad es transformar la secuencia de tokens generada por el lexer en un árbol de sintaxis abstracta
-(AST) que representa la estructura del programa de forma jerárquica y semanticamente válida.
+La carpeta src/parser contiene el analizador sintactico de pseudoWeb. Su trabajo es transformar la secuencia de tokens del lexer en un AST estructurado y validado.
 
-Esta carpeta funciona como una capa de transformación que valida que los tokens cumplan con las reglas
-gramaticales del lenguaje. En lugar de tener un único archivo monolítico, el código está dividido en piezas
-especializadas para separar responsabilidades: definición de tipos AST, máquina de estados del parser,
-reglas de síntaxis especializadas por categoría (sentencias, expresiones, ambiente, etc.), y orquestación.
+La implementacion actual separa la orquestacion principal, las reglas sintacticas especializadas, el estado interno del parser, los tipos del AST y las utilidades de navegacion sobre tokens.
 
 2. Estructura general de la carpeta
 
@@ -19,419 +14,144 @@ parser/
     errorMessages.ts
     index.ts
   orchestrator/
-    parser.ts
     dispatcher.ts
     handlerRegistry.ts
     index.ts
+    parser.ts
   state/
+    index.ts
     parserContext.ts
     parserState.ts
-    index.ts
   syntax/
-    statements.ts
-    environment.ts
     callables.ts
-    declarations.ts
-    expressions.ts
     controlFlow.ts
-    io.ts
+    declarations.ts
+    environment.ts
+    expressions.ts
     index.ts
+    io.ts
+    statements.ts
   types/
+    control.ts
     core.ts
     data.ts
+    dataTypes.ts
     declarations.ts
-    operations.ts
-    control.ts
     environment.ts
-    statements.ts
     expressions.ts
     index.ts
+    operations.ts
+    statements.ts
   utils/
-    tokens.ts
     index.ts
+    tokens.ts
   index.ts
 
-3. Descripcion archivo por archivo
+3. Descripcion de los modulos
 
 3.1 ast.ts
 
-Este archivo es un re-exportador centralizado de tipos AST desde los módulos especializados en types/.
-Proporciona una única entrada canónica para acceder a todas las definiciones de nodos del árbol de sintaxis.
-
-Responsabilidades principales:
-
-- Re-exportar todos los tipos de nodos AST definidos en types/*.ts.
-- Actuar como single point of truth para la estructura del árbol sintáctico.
-- Permitir que otros módulos importen tipos sin necesidad de conocer la estructura interna de types/.
-
-Este archivo simplifica las importaciones en el resto del parser y evita dependencias circular entre tipos.
+Reexporta los tipos del AST desde parser/types. Es la entrada canonica para consumir nodos del parser sin conocer la estructura interna de tipos.
 
 3.2 constants/errorMessages.ts
 
-Este archivo centraliza mensajes de error que el parser lanza durante el análisis sintáctico.
-Proporciona errores para todas las violaciones de sintaxis detectadas en tokens y estructura.
-
-Responsabilidades principales:
-
-- Definir mensajes descriptivos para cada error posible (esperado token X, encontrado Y, etc.).
-- Mantener mensajes consistentes y con información de contexto.
-- Exportar tanto constantes como funciones para interpolar información (nombres, tipos, etc.).
-
-Ejemplos:
-
-- ERR_EXPECTED_ACTION_HEADER: "Se esperaba el encabezado 'Accion <nombre> : ES'"
-- ERR_EXPECTED_AMBIENTE_BLOCK: 'Se esperaba el bloque "Ambiente" tras el encabezado'
-- ERR_REDECLARED_IDENTIFIER: función que genera "Identificador redeclarado: 'x'"
+Centraliza todos los mensajes de error del parser. Agrupa errores del encabezado de la accion, del bloque Ambiente, de declaraciones, expresiones, flujos de control y llamadas.
 
 3.3 orchestrator/parser.ts
 
-Este archivo contiene la clase Parser, que es la fachada principal del módulo parser.
-Su responsabilidad es orquestar el flujo de análisis: recibir tokens, crear el estado del parser,
-y delegar al punto de entrada sintáctico (parseProgram desde syntax/statements.ts).
-
-Responsabilidades principales:
-
-- Recibir un array de tokens desde el lexer.
-- Crear una instancia de ParserStateImpl que mantiene la posición actual en la secuencia.
-- Invocar parseProgram para comenzar el análisis de la acción completa.
-- Retornar el nodo ActionNode con la estructura sintáctica completa o lanzar ParserError.
-
-La clase es minimal y actúa como adaptador entre el lexer y la máquina parser interna.
+Contiene la clase Parser. Es una fachada pequena que recibe tokens del lexer, crea el estado interno y llama al punto de entrada parseProgram.
 
 3.4 orchestrator/dispatcher.ts
 
-Este archivo implementa una máquina despachadora que, dado un token, intenta reconocer qué
-tipo de sentencia comienza (Si, Mientras, Para, Repetir, Segun, Asignación, Lectura, Escritura, etc.)
-y delega al handler correspondiente en handlerRegistry.
-
-Responsabilidades principales:
-
-- Examinar el token actual para clasificar la sentencia.
-- Recuperar el parser especializado para ese tipo de sentencia.
-- Invocar el parser y retornar el nodo sintáctico resultante.
-- Lanzar error si el token no coincide con ninguna sentencia válida.
-
-El dispatcher utiliza el patrón Strategy para desacoplar la clasificación del parsing específico.
+Identifica el tipo de sentencia actual y la delega al handler registrado correspondiente. Tambien rechaza declaraciones dentro de Proceso cuando no estan permitidas.
 
 3.5 orchestrator/handlerRegistry.ts
 
-Este archivo mantiene un registro de funciones parseadoras para cada tipo de sentencia.
-Cada entrada mapea una categoria de sentencia a su función parseadora especializada.
-
-Responsabilidades principales:
-
-- Registrar parsers para tipos de sentencias (Si, Mientras, Para, Asignación, etc.).
-- Recuperar el parser cuando el dispatcher lo solicita.
-- Permitir la extensión sin modificar el registro central (si se desea).
-
-Ejemplos de tipos manejados:
-
-- Si → parseIf (de syntax/controlFlow.ts)
-- Mientras → parseWhile (de syntax/controlFlow.ts)
-- Para → parseFor (de syntax/controlFlow.ts)
-- Asignación → parseAssignment (de syntax/declarations.ts)
-- Escribir → parseWrite (de syntax/io.ts)
-- Leer → parseRead (de syntax/io.ts)
+Mantiene el registro de handlers para sentencias especializadas. El dispatcher usa este registro para resolver sentencias de control de flujo, IO y otras extensiones.
 
 3.6 state/parserContext.ts
 
-Este archivo define la interfaz ParserContext, que describe el contrato que requiere la máquina parser.
-Define todos los métodos que el estado debe proporcionar para que los parsers especializados funcionen.
-
-Responsabilidades principales:
-
-- Definir métodos para examinar tokens (peek, peekAhead, checkAny, check, checkNext).
-- Definir métodos para avanzar en la secuencia (match, advance, consume).
-- Definir métodos para gestionar separadores y crear errores (skipSeparators, parserError).
-- Definir métodos para apoyo a listas y contexto (parseCommaSeparatedList, inProcess).
-
-Métodos principales:
-
-- peek(): Token actual sin avanzar.
-- advance(): Avanzar y retornar el token anterior.
-- match(type): Si el token actual coincide, avanzar y retornar verdadero.
-- check(type): Verificar tipo sin avanzar.
-- consume(type, message): Verificar tipo, avanzar o lanzar error.
-- checkNext(...types): Verificar el siguiente token.
-- checkAny(types): Verificar si el actual coincide con alguno de los tipos.
-- skipSeparators(): Saltar saltos de línea y puntos y coma.
-- parserError(message): Crear ParserError con línea y columna actuales.
+Define el contrato que consume el resto del parser. Incluye operaciones de lectura de tokens, consumo condicional, manejo de separadores, chequeos de contexto y construccion de errores.
 
 3.7 state/parserState.ts
 
-Este archivo contiene la clase ParserStateImpl, que implementa la interfaz ParserContext.
-Mantiene la posición actual en la secuencia de tokens y coordina el flujo de avance.
-
-Responsabilidades principales:
-
-- Gestionar el índice actual en el array de tokens.
-- Implementar peek, advance, match, check y checkNext según las reglas de ParserContext.
-- Proporcionar utilidades como checkAny, parseCommaSeparatedList y parserError.
-- Lanzar ParserError cuando faltan tokens o no se cumplen expectativas.
-
-La clase es esencialmente una máquina de estados determinista que cambia position basándose
-en los tokens encontrados y permite que los parsers especializados trabajen sin conocer los detalles.
+Implementa ParserContext sobre un arreglo de tokens. Es el estado real que administra el cursor, la posicion actual y las ayudas para consumir listas, separadores y errores.
 
 3.8 syntax/statements.ts
 
-Este archivo implementa el parseo de la estructura de programa (Accion...FinAccion) y bloques de sentencias.
-Define dos funciones principales: parseProgram para la estructura completa y parseBlock para acumular sentencias.
-
-Responsabilidades principales:
-
-- parseProgram: Verifica que el programa comience con "Accion", registra nombre y "ES", parsea ambiente
-  y proceso, y verifica "FinAccion".
-- parseBlock: Acumula sentencias hasta encontrar un token stopper (ej: FinAccion, FinSi, etc.).
-
-Acciones del programa:
-
-- Verificar estructura "Accion <nombre> : ES".
-- Delegar al parser de ambiente (parseEnvironment desde syntax/environment.ts).
-- Delegar al parser de bloque de sentencias principales (parseBlock).
-- Retornar ActionNode con nombre, ambiente y proceso.
+Implementa el parseo de la accion completa y del bloque de sentencias. parseProgram valida el encabezado Accion...FinAccion y parseBlock agrupa sentencias hasta encontrar un token de cierre.
 
 3.9 syntax/environment.ts
 
-Este archivo implementa el parseo del bloque Ambiente del programa.
-Aplica máquina de fases para respetar el orden: constantes → variables → funciones/procedimientos.
-
-Responsabilidades principales:
-
-- Parsear declaraciones de constantes (Identificador = Literal).
-- Parsear declaraciones de variables (Identificador : Tipo).
-- Parsear declaraciones de funciones y procedimientos.
-- Registrar nombres para detectar redeclaraciones y shadowing.
-- Mantener invariante de orden: constantes antes que variables antes que callables.
-
-La función registerDeclarationName verifica redeclaraciones y aplicaReglas de shadowing mediante
-un tipo discriminado de ParseEnvironmentOptions que obliga a parentScopeNames cuando es necesario.
+Parsea el bloque Ambiente. Gestiona el orden de constantes, variables, funciones y procedimientos, y aplica validaciones de nombres y redeclaraciones.
 
 3.10 syntax/callables.ts
 
-Este archivo implementa el parseo de funciones (Funcion...FinFuncion) y procedimientos (Procedimiento...FinProcedimiento).
-Maneja parámetros con tipos, ambiente local opcional, y bloque proceso.
-
-Responsabilidades principales:
-
-- parseCallable: Función principal que parsea el nombre, parámetros, return type (si es función),
-  ambiente local opcional, bloque proceso, y verificación de cierre.
-- parseParameterList: Parsea lista de parámetros con tipos, detecta redeclaraciones y shadowing.
-- parseFunction: Delega a parseCallable y casta a FunctionDeclarationNode.
-- parseProcedure: Delega a parseCallable y casta a ProcedureDeclarationNode.
-
-El módulo inyecta parseEnvironment como parámetro para romper la dependencia circular entre
-environment.ts y callables.ts, permitiendo que callables parsee ambientes locales.
+Parsea funciones y procedimientos, incluyendo parametros tipados, tipo de retorno en funciones, ambiente local y el bloque Proceso asociado.
 
 3.11 syntax/declarations.ts
 
-Este archivo implementa el parseo de declaraciones dentro del bloque Proceso y asignaciones.
-Maneja variable declarations (sentencias de asignación), llamadas a procedimientos, y validaciones.
-
-Responsabilidades principales:
-
-- parseVariableDeclaration: Parsea "Identificador[, Identificador...] : Tipo" para Leer.
-- parseAssignment: Parsea "Identificador := Expresion" para asignaciones.
-- parseCallStatement: Parsea llamadas a procedimientos como sentencias.
+Parsea declaraciones de variables, asignaciones y llamadas a procedimientos usadas como sentencia.
 
 3.12 syntax/expressions.ts
 
-Este archivo implementa el parseo recursivo descendente de expresiones respetando precedencia y asociatividad.
-Define operadores binarios y unarios del lenguaje.
-
-Responsabilidades principales:
-
-- parseExpression: Entrada a la gramática de expresiones.
-- parseOr: Nivel 1 de precedencia (operador O).
-- parseAnd: Nivel 2 (operador Y).
-- parseEquality: Nivel 3 (igual, distinto).
-- parseComparison: Nivel 4 (menor, mayor, etc.).
-- parseTerm: Nivel 5 (suma, resta).
-- parseFactor: Nivel 6 (multiplicación, división, div, mod).
-- parsePower: Nivel 7 (potencia, asociatividad derecha).
-- parseUnary: Negación unaria, negación lógica.
-- parsePrimary: Literales, identificadores, llamadas de función, agrupaciones.
-
-Operadores soportados:
-
-- Binarios: Suma, Resta, Multiplicacion, Division, Div, Mod, Potencia, Igual, Distinto,
-  Menor, Mayor, MenorIgual, MayorIgual, Y, O.
-- Unarios: Resta (negación aritmética), No (negación lógica).
+Parsea expresiones con precedencia y asociatividad correctas. Cubre operadores logicos, relacionales, aritmeticos, unarios y llamadas dentro de expresiones.
 
 3.13 syntax/controlFlow.ts
 
-Este archivo implementa el parseo de estructuras de control: Si-Entonces-Sino, Mientras, Para,
-Repetir-HastaQue, Segun-Caso-Otro-FinSegun.
-
-Responsabilidades principales:
-
-- parseIf: Parsea Si <condición> Entonces <bloque> [SiNo <bloque>] FinSi.
-- parseWhile: Parsea Mientras <condición> Hacer <bloque> FinMientras.
-- parseFor: Parsea Para <var> := <init> Hasta <end> [, <step>] Hacer <bloque> FinPara.
-- parseRepetir: Parsea Repetir <bloque> HastaQue <condición>.
-- parseSegun: Parsea Segun <expr> Caso <expr>: <bloque> [...] [Otro: <bloque>] FinSegun.
-
-Cada función maneja la sintaxis específica y retorna el nodo correspondiente (IfNode, WhileNode, etc.).
+Parses de estructuras de control como Si, Mientras, Para, Repetir y Segun.
 
 3.14 syntax/io.ts
 
-Este archivo implementa el parseo de sentencias de entrada/salida: Escribir y Leer.
+Parsea las sentencias de entrada y salida: Leer y Escribir.
 
-Responsabilidades principales:
+3.15 types/
 
-- parseWrite: Parsea Escribir(<expr>[, <expr>...]) y retorna WriteNode con lista de expresiones.
-- parseRead: Parsea Leer(<var>[, <var>...]) y retorna ReadNode con lista de identificadores.
+Agrupa todos los tipos del AST y de apoyo semantico.
 
-3.15 syntax/index.ts
+Archivos relevantes:
 
-Este archivo re-exporta todas las funciones de parseo de syntax/ para que los módulos internos
-no necesiten conocer la estructura interna de este paquete.
+- core.ts: nodos base y contrato Node.
+- data.ts y dataTypes.ts: tipos de datos y valores literales.
+- declarations.ts: nodos de variables, constantes, funciones, procedimientos y parametros.
+- expressions.ts: nodos de literales, identificadores, agrupaciones, unarios, binarios y llamadas.
+- control.ts: nodos de Si, Mientras, Para, Repetir y Segun.
+- statements.ts: nodos de asignacion, leer, escribir y llamadas como sentencia.
+- environment.ts: nodos de la accion y del bloque Ambiente.
+- operations.ts: operadores binarios y unarios.
 
-Responsabilidades principales:
+3.16 utils/tokens.ts
 
-- Re-exportar parseProgram, parseBlock, parseEnvironment, parseCallable, etc.
-- Actuar como single point of truth para la API pública de syntax/.
+Contiene utilidades para trabajar con tokens durante el parseo.
 
-3.16 types/ (subdirectorio completo)
+4. Flujo de analisis
 
-Este directorio contiene definiciones de tipos AST organizadas por categoría semántica.
+1. Parser.parse() recibe los tokens del lexer.
+2. parseProgram valida la estructura global de la accion.
+3. parseEnvironment consume el bloque Ambiente.
+4. parseBlock consume el bloque Proceso.
+5. Cada sentencia se delega al dispatcher y a los handlers sintacticos correspondientes.
 
-3.16.1 types/core.ts
+5. Reglas de dependencia
 
-Define tipos fundamentales para todos los nodos: nombre, línea, columna, y la unión de todos los tipos.
+- orchestrator/ puede importar de todos los demas modulos del parser.
+- syntax/ puede importar de state/, utils/, types/, constants/ y del lexer cuando necesita TokenType.
+- state/ puede importar de types/.
+- utils/ puede importar de types/ y constants/.
+- constants/ no depende de ningun otro modulo del parser.
+- types/ no depende de otros modulos del parser.
 
-3.16.2 types/data.ts
+6. Extensiones comunes
 
-Define tipos de dato del lenguaje: Entero, Real, Caracter, Alfanumerico, Logico, AN(n).
-Contiene la unión DataType y utilidades de validación.
+Para agregar una nueva sentencia:
 
-3.16.3 types/declarations.ts
+1. Implementar el parser en syntax/.
+2. Registrar el handler en orchestrator/handlerRegistry.ts.
+3. Exportarlo desde syntax/index.ts si forma parte de la API publica.
 
-Define nodos para declaraciones: ConstantDeclarationNode, VariableDeclarationNode, ParameterNode.
+Para agregar un nuevo error:
 
-3.16.4 types/operations.ts
-
-Define nodos para operaciones: BinaryOperator, UnaryOperator, BinaryExpressionNode,
-UnaryExpressionNode, con soporte para todos los operadores aritméticos, lógicos y de comparación.
-
-3.16.5 types/control.ts
-
-Define nodos para control de flujo: IfNode, WhileNode, ForNode, RepetirNode, SegunNode,
-CaseNode, DefaultCaseNode.
-
-3.16.6 types/environment.ts
-
-Define EnvironmentBlockNode: bloque que contiene constantes, variables, funciones y procedimientos.
-
-3.16.7 types/statements.ts
-
-Define tipos de sentencias: AssignmentNode, CallStatementNode, WriteNode, ReadNode, etc.
-Incluye la unión StatementNode que agrupa todas las sentencias posibles.
-
-3.16.8 types/expressions.ts
-
-Define tipos de expresiones: LiteralNode, IdentifierNode, GroupingNode, FunctionCallNode.
-Incluye la unión ExpressionNode que agrupa todas las expresiones posibles.
-
-3.16.9 types/index.ts
-
-Re-exporta todos los tipos de types/ para acceso centralizado.
-
-3.17 utils/tokens.ts
-
-Este archivo proporciona utilidades para el manejo de tokens y creación de errores.
-
-Responsabilidades principales:
-
-- consumeAny: Consume el primer token que coincida con uno de varios tipos.
-- parserError: Crea un ParserError con información de ubicación del token.
-- Utilidades para construir mensajes de error informativos.
-
-3.18 utils/index.ts
-
-Re-exporta las utilidades de tokens para acceso centralizado.
-
-3.19 index.ts (raíz de parser)
-
-Este archivo re-exporta el Parser público desde orchestrator/parser.ts, proporcionando
-una única entrada de API al módulo parser.
-
-4. Relacion entre archivos
-
-La secuencia de trabajo típica dentro del parser es:
-
-- parser/index.ts exporta el Parser público.
-- Parser recibe tokens del lexer y crea ParserStateImpl.
-- Parser invoca parseProgram desde syntax/statements.ts.
-- parseProgram verifica estructura (Accion...FinAccion) y delega:
-  - parseEnvironment (syntax/environment.ts) para el bloque Ambiente.
-  - parseBlock (syntax/statements.ts) para el bloque Proceso.
-- parseEnvironment aplica máquina de fases (constantes → variables → callables):
-  - Para callables, inyecta parseEnvironment en parseFunction/parseProcedure.
-  - callables.ts maneja estructura de Funcion/Procedimiento e inyecta parseEnvironment.
-- parseBlock acumula sentencias invocando dispatcher para cada una.
-- dispatcher identifica el tipo de sentencia y delega a handler correspondiente:
-  - controlFlow.ts para Si, Mientras, Para, Repetir, Segun.
-  - declarations.ts para Asignación, Procedimiento Call.
-  - io.ts para Escribir, Leer.
-- Cada parser especializado invoca parseExpression de expressions.ts cuando necesita evaluar expresiones.
-- parseExpression implementa descent recursivo con precedencia:
-  - parseOr/parseAnd para lógica (menor precedencia).
-  - parseEquality/parseComparison para comparación.
-  - parseTerm/parseFactor para aritmética.
-  - parsePower para potencia (mayor precedencia).
-  - parseUnary y parsePrimary para operadores terminales.
-- types/ proporciona definiciones de nodos AST compartidas.
-- constants/errorMessages.ts centraliza todos los mensajes de error.
-- state/ gestiona la máquina de tokens y contexto de parseo.
-
-5. Arquitectura de tipos
-
-La arquitectura de tipos AST sigue el patrón discriminator union:
-
-- Cada nodo tiene un campo type único (por ejemplo, type: 'If', type: 'FunctionCall').
-- Las uniones (StatementNode, ExpressionNode, etc.) agrupan todas las variantes.
-- Los parsers retornan tipos específicos que se conforman a la unión correspondiente.
-
-Beneficios:
-
-- Type narrowing en TypeScript permite verificación exhaustiva en patrón switch.
-- Cada nodo es auto-descriptivo sin necesidad de fields adicionales.
-- Nuevos tipos se agregan sin modificar código existente (abierto/cerrado).
-
-6. Flujo de precedencia de expresiones
-
-El parser implementa descent recursivo descendente con los siguientes niveles de precedencia
-(de menor a mayor, evaluados en orden):
-
-1. O (OR, logical disjunction) → parseOr
-2. Y (AND, logical conjunction) → parseAnd
-3. Igual, Distinto (equality) → parseEquality
-4. Menor, Mayor, MenorIgual, MayorIgual (comparison) → parseComparison
-5. Suma, Resta (additive) → parseTerm
-6. Multiplicación, División, Div, Mod (multiplicative) → parseFactor
-7. Potencia (exponential, right-associative) → parsePower
-8. Negación unaria (-, No) → parseUnary
-9. Primarias (literales, identificadores, llamadas, agrupaciones) → parsePrimary
-
-6.1 Operadores especiales
-
-- División (/) para números reales.
-- Div para división entera (DIV en mayúsculas).
-- Mod para residuo entero (MOD en mayúsculas).
-- Potencia (**) con asociatividad derecha.
-
-7. Observacion de arquitectura
-
-La arquitectura actual del parser demuestra modularidad avanzada:
-
-- Separación clara entre orquestación (orchestrator/), reglas sintácticas (syntax/),
-  definiciones de tipos (types/), y utilidades (utils/).
-- El estado del parser (state/) es desacoplado de la lógica de parsing mediante ParserContext.
-- Los parsers especializados (syntax/) no tienen acceso directo al estado; solo mediante ParserContext.
-- Las reglas de precedencia son implementadas de forma clara mediante recursión descendente.
-- Los tipos AST están organizados semánticamente facilitando comprensión y modificación.
-- Inyección de dependencias (parseEnvironment en callables.ts) rompe ciclos sin crear acoplamiento.
-
-Esta estructura permite agregar nuevas sentencias y expresiones sin modificar orchestrator ni state.
+1. Definir el mensaje en constants/errorMessages.ts.
+2. Usarlo desde el modulo que detecta la condicion invalida.
 
 Fin del documento.

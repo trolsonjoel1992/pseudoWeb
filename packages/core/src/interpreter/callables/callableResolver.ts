@@ -8,6 +8,8 @@
  */
 
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import type { FunctionDeclarationNode, ProcedureDeclarationNode } from '../../parser/ast'
 import { BuiltinRegistry, type BuiltinFunction } from '../builtins'
 import { CallableRegistry } from './callableRegistry'
@@ -60,11 +62,21 @@ export class CallableResolver {
 
     // Check if it's a procedure (wrong kind error)
     if (this.registry.isProcedure(name)) {
-      throw new RuntimeError(Errors.FUNCTION_IS_PROCEDURE(name))
+      throw new RuntimeError({
+        code: ErrorCode.RUN_INVALID_ARGUMENT,
+        message: Errors.FUNCTION_IS_PROCEDURE(name),
+        module: 'interpreter',
+        context: { name },
+      })
     }
 
     // Not found at all
-    throw new RuntimeError(Errors.NO_FUNCTION(name))
+    throw new RuntimeError({
+      code: ErrorCode.RUN_UNDEFINED_IDENTIFIER,
+      message: Errors.NO_FUNCTION(name),
+      module: 'interpreter',
+      context: { name },
+    })
   }
 
   /**
@@ -81,10 +93,20 @@ export class CallableResolver {
 
     // Check if it's a function (wrong kind error)
     if (this.registry.isFunction(name)) {
-      throw new RuntimeError(Errors.PROCEDURE_IS_FUNCTION(name))
+      throw new RuntimeError({
+        code: ErrorCode.RUN_INVALID_ARGUMENT,
+        message: Errors.PROCEDURE_IS_FUNCTION(name),
+        module: 'interpreter',
+        context: { name },
+      })
     }
 
     // Not found at all
-    throw new RuntimeError(Errors.NO_PROCEDURE(name))
+    throw new RuntimeError({
+      code: ErrorCode.RUN_UNDEFINED_IDENTIFIER,
+      message: Errors.NO_PROCEDURE(name),
+      module: 'interpreter',
+      context: { name },
+    })
   }
 }

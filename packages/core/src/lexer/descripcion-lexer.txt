@@ -2,336 +2,204 @@ Descripcion detallada de la carpeta lexer
 
 1. Proposito general
 
-La carpeta src/lexer contiene el analizador léxico (lexer) del lenguaje pseudoWeb dentro del paquete core.
-Su responsabilidad es transformar el código fuente en una secuencia de tokens que el parser puede analizar.
+La carpeta src/lexer contiene el analizador lexico de pseudoWeb. Su trabajo es convertir el codigo fuente en una secuencia de tokens que luego consume el parser.
 
-El lexer es la primera etapa del compilador: examina caracteres uno a uno, reconoce patrones
-(palabras clave, identificadores, operadores, números, cadenas), genera tokens con tipo y contexto
-(línea, columna), y descarta componentes no sintácticos (espacios, comentarios).
-
-En lugar de un único archivo monolítico, el código está organizado en scanners especializados
-para cada categoría de token (números, cadenas, identificadores, operadores, comentarios)
-y utilidades para manejo de caracteres.
+La implementacion actual esta dividida en un orquestador central, scanners especializados, tipos compartidos y utilidades de caracteres. Esa separacion mantiene la tokenizacion pequena, testeable y facil de extender.
 
 2. Estructura general de la carpeta
 
 lexer/
-  lexer.ts
-  tokenTypes.ts
-  tokenRules.ts
+  orchestrator/
+    lexer.ts
+    lexerContext.ts
+    lexerState.ts
+    index.ts
   scanners/
-    numberScanner.ts
-    stringScanner.ts
-    identifierScanner.ts
-    operatorScanner.ts
     commentScanner.ts
+    identifierScanner.ts
+    numberScanner.ts
+    operatorScanner.ts
+    stringScanner.ts
+    index.ts
+  types/
+    index.ts
+    lexerError.ts
+    scannerContext.ts
+    token.ts
+    tokenRules.ts
+    tokenType.ts
   utils/
     charUtils.ts
+    index.ts
 
-3. Descripcion archivo por archivo
+3. Descripcion de los modulos
 
-3.1 lexer.ts
+3.1 orchestrator/lexer.ts
 
-Este es el archivo principal del módulo lexer. Contiene la clase Lexer que orquesta todo el proceso
-de análisis léxico.
-
-Responsabilidades principales:
-
-- Recibir el código fuente como string en el constructor.
-- Mantener la posición actual (start, current), línea y columna para reportar ubicaciones.
-- Iterar caracteres del código fuente invocando scanToken() para cada nuevo token.
-- Delegar a scanners especializados para reconocer cada tipo de token.
-- Manejar separadores no sintácticos: espacios, tabulaciones, retornos de carro, saltos de línea.
-- Acumular tokens generados en un array.
-- Agregar token EOF al final.
-
-Métodos principales:
-
-- constructor(source: string): Inicializar con el código fuente.
-- tokenize(): Punto de entrada; itera el código y retorna array de tokens.
-- scanToken(): Llamada para cada nuevo token. Examina el carácter actual y delega.
-- peek(): Retorna el carácter en current sin avanzar.
-- peekNext(): Retorna el carácter en current+1 sin avanzar.
-- advance(): Incrementa current, maneja saltos de línea para actualizar línea/columna.
-- addToken(): Agrega token al array con información de ubicación.
-- isAtEnd(): Verifica si se alcanzó el final del código.
-
-3.2 tokenTypes.ts
-
-Este archivo define la enumeración TokenType con todos los tipos de tokens que el lexer puede generar.
-
-Categorías de tokens:
-
-a) Palabras clave (Keywords):
-   - Accion, FinAccion: Delimitadores de la acción principal.
-   - Ambiente: Delimitador del bloque de declaraciones.
-   - Proceso: Delimitador del bloque de sentencias.
-   - Funcion, FinFuncion: Delimitadores de funciones.
-   - Procedimiento, FinProcedimiento: Delimitadores de procedimientos.
-   - Si, Entonces, SiNo, FinSi: Estructura de decisión if-then-else.
-   - Mientras, Hacer, FinMientras: Estructura de iteración while.
-   - Para, Hasta, FinPara: Estructura de iteración for.
-   - Repetir, HastaQue: Estructura de iteración repeat-until.
-   - Segun, Caso, Otro, FinSegun: Estructura de selección switch.
-   - Leer, Escribir: Sentencias de entrada/salida.
-   - Y, O, No: Operadores lógicos.
-   - Const: Declarador de constante.
-   - Retornar: Retorno de función.
-   - Div, Mod: Operadores de división entera y residuo.
-   - Verdadero, Falso: Literales booleanos.
-   - Entero, Real, Caracter, Alfanumerico, Logico: Tipos de datos.
-
-b) Literales:
-   - Number: Número (entero o real).
-   - String: Cadena de caracteres entre comillas.
-   - Identifier: Nombre de variable, función, procedimiento, constante.
-
-c) Operadores:
-   - Asignacion: :=
-   - Igual: =
-   - Distinto: <>
-   - Menor: <
-   - Mayor: >
-   - MenorIgual: <=
-   - MayorIgual: >=
-   - Suma: +
-   - Resta: -
-   - Multiplicacion: *
-   - Division: /
-   - Potencia: **
-   - Modulo: %
-
-d) Delimitadores:
-   - ParenIzq, ParenDer: ( )
-   - CorcheteIzq, CorcheteDer: [ ]
-   - LlaveIzq, LlaveDer: { }
-   - Coma: ,
-   - PuntoYComa: ;
-   - TiempoDosPuntos: :
-   - Punto: .
-
-e) Especiales:
-   - SaltoDeLinea: Salto de línea \n.
-   - EOF: Fin de archivo.
-   - Error: Token de error (nunca generado en uso normal).
-
-3.3 tokenRules.ts
-
-Este archivo centraliza la información de palabras clave y reglas especiales de tokens.
+Este archivo contiene la clase Lexer. Es el punto de entrada del modulo y coordina el recorrido del texto fuente.
 
 Responsabilidades principales:
 
-- Mantener un mapa de palabras clave reservadas a su TokenType correspondiente.
-- Definir reglas para tokens especiales (como DIV, MOD en mayúsculas para operadores vs identificadores).
-- Proporcionar funciones auxiliares para consultar si una palabra es reservada.
+- Recibir el codigo fuente en el constructor.
+- Iterar caracter por caracter hasta llegar al final.
+- Ignorar espacios, retornos de carro y tabulaciones.
+- Emitir tokens de salto de linea cuando aparece \n.
+- Delegar el reconocimiento a los scanners especializados.
+- Agregar el token EOF al terminar.
 
-Contenido:
+3.2 orchestrator/lexerState.ts
 
-- KEYWORDS: Map que asocia strings como "Accion", "Ambiente", "Si" a su TokenType.
-- isKeyword(word: string): Verifica si una palabra es reservada.
-- getKeywordType(word: string): Retorna el TokenType de una palabra reservada.
-- Reglas especiales:
-  - DIV (en mayúsculas) es el operador de división entera.
-  - MOD (en mayúsculas) es el operador de residuo.
-  - Si están en minúsculas, se tratan como identificadores.
-
-3.4 scanners/ (subdirectorio)
-
-Este subdirectorio contiene scanners especializados, cada uno responsable de reconocer
-una categoría específica de token y acumular caracteres hasta formar el token completo.
-
-3.4.1 scanners/numberScanner.ts
-
-Este scanner reconoce y crea tokens de números.
+Este archivo implementa el estado interno del lexer. Guarda la posicion actual, el inicio del lexema, la linea, la columna y el arreglo de tokens generados.
 
 Responsabilidades principales:
 
-- scanNumberToken(state): Acumula dígitos para formar un número.
-- Determina si el número es entero o real (basándose en la presencia de un punto).
-- Maneja números de la forma:
-  - Enteros: 42, 1000
-  - Reales: 3.14, 2.0
-  - Notación científica (si está soportada): 1e10, 1.5e-5
-- Retorna Token con type Number y literal como número nativo.
+- Avanzar por el codigo fuente.
+- Consultar el caracter actual y el siguiente.
+- Marcar el inicio de cada lexema.
+- Construir tokens con tipo, lexema, literal y ubicacion.
+- Exponer el arreglo final de tokens.
 
-Parámetro state (LexerState):
+3.3 orchestrator/lexerContext.ts
 
-El scanner recibe un objeto state que proporciona:
-- isAtEnd(): Verifica si se alcanzó el final del código.
-- peek(): Carácter actual.
-- peekNext(): Carácter siguiente.
-- advance(): Avanzar un carácter.
+Define el contrato que consumen los scanners. Esto evita que dependan directamente de la implementacion concreta del estado.
 
-Este patrón de inyección es consistente en todos los scanners.
+Metodos clave:
 
-3.4.2 scanners/stringScanner.ts
+- markStart()
+- peek()
+- peekNext()
+- advance()
+- isAtEnd()
+- addToken()
+- sliceLexeme()
 
-Este scanner reconoce y crea tokens de cadenas de caracteres.
+3.4 scanners/numberScanner.ts
 
-Responsabilidades principales:
+Reconoce numeros enteros y reales.
 
-- scanStringToken(state, quoteChar): Acumula caracteres entre comillas.
-- Maneja escape sequences como \", \\, \n, etc.
-- Detecta si la cadena no cierra correctamente (error).
-- Retorna Token con type String y literal como valor de la cadena.
+Comportamiento actual:
 
-Soporta:
+- Lee digitos consecutivos.
+- Si encuentra un punto seguido de otro digito, lo interpreta como numero real.
+- Convierte el literal a numero nativo antes de emitir el token.
+- No implementa notacion cientifica en la version actual.
 
-- Cadenas simples: "Hola"
-- Cadenas con espacios: "Hola Mundo"
-- Cadenas con escapes: "Hola\nMundo"
-- Carácter de comilla: quoteChar (generalmente ").
+3.5 scanners/stringScanner.ts
 
-3.4.3 scanners/identifierScanner.ts
+Reconoce literales entre comillas simples o dobles.
 
-Este scanner reconoce y crea tokens de identificadores y palabras clave.
+Comportamiento actual:
 
-Responsabilidades principales:
+- Soporta escapes como \n, \t, \r, \\\, \" y \'
+- Lanza error si la cadena no cierra.
+- Emite el valor ya procesado como literal.
+- La implementacion actual distingue entre comillas dobles y simples para el tipo del token.
 
-- scanIdentifierToken(state): Acumula caracteres alfanuméricos y guiones bajos.
-- Verifica si el identificador es una palabra clave reservada.
-- Si es palabra clave, retorna Token con el TokenType correspondiente.
-- Si es identificador, retorna Token con type Identifier.
-- Maneja especial: DIV y MOD (en mayúsculas) como operadores, en minúsculas como identificadores.
+3.6 scanners/identifierScanner.ts
 
-Reglas de identificador:
+Reconoce identificadores y palabras reservadas.
 
-- Comienza con letra o guion bajo.
-- Continúa con letras, dígitos o guiones bajos.
-- No puede ser palabra clave reservada (excepto DIV/MOD con capitalización específica).
+Comportamiento actual:
 
-3.4.4 scanners/operatorScanner.ts
+- Lee letras, digitos y guion bajo.
+- Resuelve palabras reservadas mediante tokenRules.ts.
+- Trata DIV y MOD en mayusculas como operadores especiales.
+- Trata div y mod en minusculas como identificadores normales.
 
-Este scanner reconoce y crea tokens de operadores.
+3.7 scanners/operatorScanner.ts
 
-Responsabilidades principales:
+Reconoce operadores y delimitadores puntuales.
 
-- scanOperatorToken(state): Examina el carácter actual y posiblemente el siguiente.
-- Construye operadores de dos caracteres: :=, <>, <=, >=, **.
-- Construye operadores de un carácter: =, <, >, +, -, *, /, %.
-- Maneja especiales como parentesis, corchetes, llaves, coma, punto, punto y coma, etc.
-- Retorna Token con el TokenType correspondiente.
+Comportamiento actual:
 
-Operadores soportados:
+- Soporta :=, **, <=, >=, <>, ..
+- Emite operadores de un caracter como +, -, *, /, =, < y >.
+- Emite delimitadores como parentesis, coma, punto y coma y dos puntos.
+- Lanza LexerError si encuentra un caracter no soportado.
 
-- Asignacion: :=
-- Relacionales: =, <>, <, >, <=, >=
-- Aritméticos: +, -, *, /, **
-- Especiales: %, (unario), ), [, ], {, }, ,, ;, :, .
+3.8 scanners/commentScanner.ts
 
-3.4.5 scanners/commentScanner.ts
+Descarta comentarios sin producir tokens.
 
-Este scanner ignora comentarios y ajusta la posición del lexer.
+Comportamiento actual:
 
-Responsabilidades principales:
+- skipLineComment consume hasta antes del salto de linea.
+- skipBlockComment consume comentarios entre /* y */.
+- Los comentarios anidados no forman parte del comportamiento actual.
 
-- skipBlockComment(state): Descarta un comentario de bloque /* ... */.
-- skipLineComment(state): Descarta un comentario de línea // ...
-- Actualiza información de línea/columna durante el descarte.
-- No genera tokens; simplemente avanza el state.
+3.9 types/tokenType.ts
 
-Tipos de comentarios soportados:
+Define la enumeracion TokenType. Contiene palabras clave, operadores, delimitadores, tipos de dato, identificadores y tokens especiales.
 
-- Comentarios de línea: // Este es un comentario
-- Comentarios de bloque: /* Este es un comentario de bloque */
-  - Anidamiento de bloques: /* /* anidado */ */ (si está soportado)
+Tokens relevantes en la implementacion actual:
 
-3.5 utils/charUtils.ts
+- Accion, FinAccion, Ambiente, Proceso, Funcion, FinFuncion, Procedimiento, FinProcedimiento
+- Si, SiNo, FinSi, Mientras, FinMientras, Para, FinPara, Repetir, Hasta, HastaQue, Segun, Hacer, Otro, FinSegun
+- Leer, Escribir, Entonces, ES, Verdadero, Falso, Y, O, No
+- Asignacion, Suma, Resta, Multiplicacion, Division, Div, Mod, Potencia
+- Igual, Distinto, Menor, Mayor, MenorIgual, MayorIgual
+- ParentesisIzquierdo, ParentesisDerecho, DosPuntos, Coma, Rango, PuntoYComa, SaltoDeLinea, EOF
 
-Este archivo proporciona utilidades para clasificación y manejo de caracteres.
+3.10 types/token.ts
 
-Responsabilidades principales:
+Define la estructura comun de un token.
 
-- isAlpha(char): Verifica si el carácter es una letra (a-z, A-Z, _).
-- isDigit(char): Verifica si el carácter es un dígito (0-9).
-- isAlphaNumeric(char): Verifica si es letra o dígito.
-- isWhitespace(char): Verifica si es espacio, tabulación, etc.
-- isOperatorChar(char): Verifica si puede ser parte de un operador.
+Campos:
 
-Funciones auxiliares adicionales según sea necesario para scanners.
+- type: clasificacion del token.
+- lexeme: texto original leido del codigo fuente.
+- literal: valor interpretado.
+- line: linea donde se registro el token.
+- column: columna donde se registro el token.
+
+3.11 types/tokenRules.ts
+
+Centraliza las palabras reservadas y la resolucion de identificadores.
+
+Reglas relevantes:
+
+- El mapa KEYWORDS resuelve palabras reservadas en minusculas.
+- resolveIdentifierType convierte DIV y MOD exactos en sus operadores correspondientes.
+- Cualquier otro lexema cae en Identificador.
+
+3.12 types/scannerContext.ts
+
+Reexporta el contrato que usan los scanners desde el contexto del lexer.
+
+3.13 types/lexerError.ts
+
+Define el error especializado que utiliza el lexer para reportar caracteres no soportados, cadenas sin cerrar y comentarios incompletos.
+
+3.14 utils/charUtils.ts
+
+Agrupa utilidades pequenas para clasificar caracteres.
+
+Funciones actuales:
+
+- isDigit(char)
+- isAlpha(char)
+- isAlphaNumeric(char)
 
 4. Flujo de tokenizacion
 
-El flujo típico de tokenización es:
+El flujo actual es simple:
 
-1. Lexer.tokenize() es invocado con el código fuente.
-2. Se inicializa un array vacío para acumular tokens.
-3. Se itera mientras no sea fin de código:
-   a. scanToken() examina el carácter actual.
-   b. Si es espacio/tab: avanza sin generar token.
-   c. Si es salto de línea: genera token SaltoDeLinea.
-   d. Si es comentario: skipBlockComment o skipLineComment descarta caracteres.
-   e. Si es dígito: numberScanner acumula y genera Number.
-   f. Si es comilla: stringScanner acumula y genera String.
-   g. Si es letra/guion bajo: identifierScanner acumula y verifica palabra clave.
-   h. Si es operador: operatorScanner genera token de operador.
-4. Después de iterar completamente, se agrega token EOF.
-5. Se retorna el array de tokens.
+1. Lexer.tokenize() marca el inicio de cada lexema.
+2. scanToken() inspecciona el caracter actual.
+3. Segun el caracter, delega a un scanner especializado o emite un token simple.
+4. Los espacios y tabulaciones se omiten.
+5. Los saltos de linea se convierten en token SaltoDeLinea.
+6. Al finalizar, se agrega EOF.
 
-5. Manejo de ubicacion (linea y columna)
+5. Observaciones de arquitectura
 
-El lexer mantiene información de ubicación para cada token:
+- El orquestador contiene la logica de control del flujo.
+- Los scanners encapsulan la logica de reconocimiento.
+- tokenRules.ts concentra las reglas especiales para palabras reservadas.
+- Las utilidades de caracteres mantienen el codigo de reconocimiento pequeño y reutilizable.
 
-- line: Número de línea (comienza en 1).
-- column: Número de columna en esa línea (comienza en 1).
+6. Nota sobre tipos y errores
 
-Actualización durante avance:
-
-- advance() incrementa column.
-- Cuando se encuentra \n, increment line y resetea column a 1.
-
-Cada token almacena la línea y columna donde comenzó el lexema.
-
-Esto permite que el parser genere mensajes de error precisos con ubicación del problema.
-
-6. Caracteristicas especiales
-
-6.1 Operadores especiales DIV y MOD
-
-El lexer implementa un comportamiento especial para DIV y MOD:
-
-- Si aparecen en mayúsculas (DIV, MOD), son operadores de división/módulo entero.
-- Si aparecen en minúsculas (div, mod), son tratados como identificadores.
-- Esta distinción se implementa en identifierScanner verificando si la palabra clave
-  está en el mapa KEYWORDS con capitalización exacta.
-
-6.2 Nocion de Token Interface
-
-Cada token es una estructura con campos:
-
-```
-interface Token {
-  type: TokenType;
-  lexeme: string;          // Texto original del token
-  literal: string|number|boolean|null;  // Valor interpretado
-  line: number;
-  column: number;
-}
-```
-
-- type: Clasificación del token.
-- lexeme: Representación textual exacta en el código.
-- literal: Valor computado (número para Number, string para String, null para otros).
-- line, column: Ubicación en el código fuente.
-
-7. Observacion de arquitectura
-
-La arquitectura del lexer demuestra varios principios de buen diseño:
-
-- Separación clara entre escaneo (lexer.ts), tipos (tokenTypes.ts), reconocimiento (scanners/),
-  y utilidades (utils/).
-- Patrón Strategy para scanners especializados: cada categoría de token tiene su lógica aislada.
-- Inyección de dependencias mediante parámetro state: scanners no acceden directamente a
-  posición del lexer, permiten testeo.
-- Centralización de reglas: tokenRules.ts mantiene palabras clave y reglas especiales en un lugar.
-- Manejo uniforme de ubicación: cada token porta su línea y columna para diagnósticos precisos.
-- Flujo claro: Lexer.tokenize() → scanToken() → scanner especializado → addToken().
-
-Esta arquitectura facilita:
-
-- Agregar nuevos tipos de tokens sin tocar lexer.ts.
-- Modificar reglas de palabras clave solo en tokenRules.ts.
-- Testear escanners especializados de forma aislada.
-- Agregar caracteres especiales o escape sequences con cambios mínimos.
+El enum incluye algunos valores adicionales para uso interno o futuro, pero el flujo actual no los emite de forma normal. Los errores se propagan mediante LexerError con ubicacion concreta para facilitar diagnostico en parser y tests.
 
 Fin del documento.

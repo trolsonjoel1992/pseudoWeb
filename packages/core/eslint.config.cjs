@@ -24,6 +24,10 @@ module.exports = [
           selector: "ThrowStatement > NewExpression[callee.name='Error']",
           message: 'Usar state.parserError() en lugar de throw new Error() dentro del parser',
         },
+        {
+          selector: "NewExpression[callee.name=/^(LexerError|ParserError|InterpreterError|RuntimeError)$/][arguments.0.type='Literal']",
+          message: 'Prohibido instanciar errores con un string literal. Usar el objeto StructuredError con `code`.',
+        },
       ],
     },
   },
