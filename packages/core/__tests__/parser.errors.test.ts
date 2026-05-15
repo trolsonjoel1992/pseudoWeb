@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Lexer } from '../src/lexer/lexer'
+import { Lexer } from '../src/lexer'
 import { Parser } from '../src/parser'
 import { ERR_CONSTANTS_BEFORE_VARIABLES, ERR_VARIABLES_BEFORE_CALLABLES, ERR_EXPECTED_AMBIENTE_BLOCK, ERR_EXPECTED_PROCESO_BLOCK, ERR_EXPECTED_FIN_ACCION, ERR_EXPECTED_PROCESO_IN_FUNCTION, ERR_EXPECTED_FIN_FUNCTION } from '../src/parser/constants'
 

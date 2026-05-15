@@ -1,21 +1,14 @@
-import { TokenType } from '../tokenTypes'
-import { resolveIdentifierType } from '../tokenRules'
+import type { ScannerContext } from '../types/index.js'
+import { TokenType, resolveIdentifierType } from '../types/index.js'
 
 type Literal = string | number | boolean | null
 
-type IdentifierScannerContext = {
-  line: number
-  column: number
-  isAtEnd: () => boolean
-  peek: () => string
-  advance: () => string
-  isAlphaNumeric: (char: string) => boolean
-  sliceLexeme: () => string
+type IdentifierScannerContext = ScannerContext & {
   addToken: (type: TokenType, lexeme: string, literal: Literal, line: number, column: number) => void
 }
 
-export function scanIdentifierToken(context: IdentifierScannerContext): void {
-  while (!context.isAtEnd() && context.isAlphaNumeric(context.peek())) {
+export function scanIdentifierToken(context: IdentifierScannerContext, isAlphaNumeric: (char: string) => boolean): void {
+  while (!context.isAtEnd() && isAlphaNumeric(context.peek())) {
     context.advance()
   }
 

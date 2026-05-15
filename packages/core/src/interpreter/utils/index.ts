@@ -1,1 +1,1 @@
-export { stringifyValue, isTruthy, assertDefinedValue, toNumber, toComparable } from './valueUtils'
+export { stringifyValue, isTruthy, assertDefinedValue, toNumber, toComparable } from './valueUtils.js'

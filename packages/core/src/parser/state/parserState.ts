@@ -1,5 +1,5 @@
-import type { Token } from '../../lexer/lexer'
-import { TokenType } from '../../lexer/tokenTypes'
+import type { Token } from '../../lexer/types'
+import { TokenType } from '../../lexer/types'
 import { ParserError } from '../../errors'
 import type { ParserContext } from './parserContext'
 import { ERR_EXPECTED_CLOSE_PAREN_IN_LIST, ERR_LOCATION_EOF, ERR_LOCATION_TOKEN } from '../constants'

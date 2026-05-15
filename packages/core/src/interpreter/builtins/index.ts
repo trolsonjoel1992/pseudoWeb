@@ -1,8 +1,8 @@
-import { BuiltinRegistry } from './registry'
-import { createREDOND } from './math'
+import { BuiltinRegistry } from './registry.js'
+import { createREDOND } from './math.js'
 
-export { BuiltinRegistry } from './registry'
-export type { BuiltinFunction } from './registry'
+export { BuiltinRegistry } from './registry.js'
+export type { BuiltinFunction } from './registry.js'
 
 export function initBuiltins(): BuiltinRegistry {
   const registry = new BuiltinRegistry()

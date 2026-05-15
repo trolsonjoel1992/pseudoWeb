@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { Lexer } from '../src/lexer/lexer'
-import { TokenType } from '../src/lexer/tokenTypes'
+import { Lexer } from '../src/lexer'
+import { TokenType } from '../src/lexer/types'
 
 describe('Lexer', () => {
   it('tokeniza declaraciones y operadores básicos', () => {
@@ -40,7 +40,7 @@ describe('Lexer', () => {
   })
 
   it('falla con comentario sin cerrar', () => {
-    expect(() => new Lexer('/* comentario').tokenize()).toThrow('Comentario sin cerrar')
+    expect(() => new Lexer('/* comentario').tokenize()).toThrow('Comentario de bloque sin cerrar')
   })
 
   it('reconoce DIV/MOD en mayúscula y rechaza minúscula como operador', () => {

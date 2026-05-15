@@ -1,31 +1,24 @@
-import { TokenType } from '../tokenTypes'
+import type { ScannerContext } from '../types/index.js'
+import { TokenType } from '../types/index.js'
 
 type Literal = string | number | boolean | null
 
-type NumberScannerContext = {
-  line: number
-  column: number
-  isAtEnd: () => boolean
-  peek: () => string
-  peekNext: () => string
-  advance: () => string
-  isDigit: (char: string) => boolean
-  sliceLexeme: () => string
+type NumberScannerContext = ScannerContext & {
   addToken: (type: TokenType, lexeme: string, literal: Literal, line: number, column: number) => void
 }
 
-export function scanNumberToken(context: NumberScannerContext): void {
-  while (!context.isAtEnd() && context.isDigit(context.peek())) {
+export function scanNumberToken(context: NumberScannerContext, isDigit: (char: string) => boolean): void {
+  while (!context.isAtEnd() && isDigit(context.peek())) {
     context.advance()
   }
 
   let tokenType = TokenType.Entero
 
-  if (context.peek() === '.' && context.isDigit(context.peekNext())) {
+  if (context.peek() === '.' && isDigit(context.peekNext())) {
     tokenType = TokenType.Real
     context.advance()
 
-    while (!context.isAtEnd() && context.isDigit(context.peek())) {
+    while (!context.isAtEnd() && isDigit(context.peek())) {
       context.advance()
     }
   }

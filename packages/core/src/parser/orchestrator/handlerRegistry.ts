@@ -1,6 +1,6 @@
 import type { ParserContext } from '../state'
 import type { StatementNode } from '../ast'
-import { TokenType } from '../../lexer/tokenTypes'
+import { TokenType } from '../../lexer/types'
 import { parseIf, parseWhile, parseFor, parseSwitch, parseDoWhile } from '../syntax/controlFlow'
 import { parseWrite, parseRead } from '../syntax/io'
 

@@ -1,6 +1,6 @@
 import type { BinaryExpressionNode, BinaryOperator, ExpressionNode, UnaryOperator } from '../ast'
-import { TokenType } from '../../lexer/tokenTypes'
-import type { Token } from '../../lexer/lexer'
+import { TokenType } from '../../lexer/types'
+import type { Token } from '../../lexer/types'
 import type { ParserContext } from '../state'
 import { ERR_EXPECTED_CLOSE_PAREN_AFTER_ARGS, ERR_EXPECTED_CLOSE_PAREN_AFTER_EXPR, ERR_EXPECTED_EXPRESSION, ERR_UNSUPPORTED_BINARY_OPERATOR, ERR_UNSUPPORTED_UNARY_OPERATOR } from '../constants'
 import { parserError } from '../utils/tokens'

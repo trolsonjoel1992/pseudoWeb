@@ -1,5 +1,5 @@
-import type { Token } from '../../lexer/lexer'
-import type { TokenType } from '../../lexer/tokenTypes'
+import type { Token } from '../../lexer/types'
+import type { TokenType } from '../../lexer/types'
 import type { ParserError } from '../../errors'
 
 export interface ParserContext {

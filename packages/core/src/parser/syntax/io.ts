@@ -1,6 +1,6 @@
 import type { ParserContext } from '../state'
 import type { ReadNode, WriteNode } from '../ast'
-import { TokenType } from '../../lexer/tokenTypes'
+import { TokenType } from '../../lexer/types'
 import { parseExpression } from './expressions'
 import { ERR_EXPECTED_VARIABLE_NAME_IN_READ } from '../constants'
 

@@ -1,2 +1,2 @@
-export { Environment } from './environment'
-export { EnvironmentManager } from './environmentManager'
+export { Environment } from './environment.js'
+export { EnvironmentManager } from './environmentManager.js'
