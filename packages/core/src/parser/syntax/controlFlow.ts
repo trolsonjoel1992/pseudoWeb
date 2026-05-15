@@ -1,6 +1,6 @@
 import type { ParserContext } from '../state'
 import type { IfNode, WhileNode, ForNode, ExpressionNode } from '../ast'
-import { TokenType } from '../../lexer/tokenTypes'
+import { TokenType } from '../../lexer/types'
 import { parseExpression } from './expressions'
 import { parseBlock } from './statements'
 import { parseStatement } from '../orchestrator/dispatcher'

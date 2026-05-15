@@ -1,6 +1,6 @@
 import type { ParserContext } from '../state'
 import type { VariableDeclarationNode, AssignmentNode, CallStatementNode, ExpressionNode } from '../ast'
-import { TokenType } from '../../lexer/tokenTypes'
+import { TokenType } from '../../lexer/types'
 import { parseExpression } from './expressions'
 import { parseDataType } from '../types'
 import { ERR_EXPECTED_IDENTIFIER, ERR_EXPECTED_COLON_AFTER_VARIABLES, ERR_EXPECTED_VARIABLE, ERR_EXPECTED_ASSIGN_OP, ERR_EXPECTED_CALL_NAME, ERR_EXPECTED_OPEN_PAREN_IN_CALL, ERR_EXPECTED_CLOSE_PAREN_IN_CALL } from '../constants'

@@ -1,6 +1,6 @@
 import type { ParserContext } from '../state'
 import type { StatementNode } from '../ast'
-import { TokenType } from '../../lexer/tokenTypes'
+import { TokenType } from '../../lexer/types'
 import { handlerRegistry } from './handlerRegistry'
 import { parseVariableDeclaration, parseAssignment, parseCallStatement } from '../syntax/declarations'
 import { ERR_NO_DECLARATIONS_IN_PROCESO, ERR_INVALID_STATEMENT } from '../constants'

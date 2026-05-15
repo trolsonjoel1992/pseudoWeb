@@ -1,17 +1,17 @@
 // Re-export all types from types modules
 
-export * from './dataTypes'
+export * from './dataTypes.js'
 
-export type { Node } from './core'
-export type { UnaryOperator, BinaryOperator } from './operations'
-export type { DataType, LiteralValue } from './data'
+export type { Node } from './core.js'
+export type { UnaryOperator, BinaryOperator } from './operations.js'
+export type { DataType, LiteralValue } from './data.js'
 export type {
   VariableDeclarationNode,
   ConstantDeclarationNode,
   ParameterNode,
   FunctionDeclarationNode,
   ProcedureDeclarationNode,
-} from './declarations'
+} from './declarations.js'
 export type {
   LiteralNode,
   IdentifierNode,
@@ -20,14 +20,14 @@ export type {
   GroupingNode,
   FunctionCallNode,
   ExpressionNode,
-} from './expressions'
+} from './expressions.js'
 export type {
   AssignmentNode,
   WriteNode,
   ReadNode,
   CallStatementNode,
   BasicStatementNode,
-} from './statements'
+} from './statements.js'
 export type {
   IfNode,
   WhileNode,
@@ -37,7 +37,7 @@ export type {
   SwitchCaseNode,
   SwitchNode,
   StatementNode,
-} from './control'
+} from './control.js'
 export type {
   EnvironmentBlockNode,
   ActionNode,

@@ -1,10 +1,10 @@
 // Exportaciones principales del core
 
-export * from './lexer/tokenTypes'
-export * from './lexer/tokenRules'
-export * from './lexer/lexer'
-export * from './parser/ast'
-export * from './parser'
-export * from './interpreter/orchestrator'
-export * from './interpreter/environment'
-export * from './errors'
+export { Lexer } from './lexer/index.js'
+export type { Token } from './lexer/types/index.js'
+export { TokenType, KEYWORDS, resolveIdentifierType, LexerError } from './lexer/types/index.js'
+export * from './parser/ast.js'
+export * from './parser/index.js'
+export * from './interpreter/orchestrator/index.js'
+export * from './interpreter/environment/index.js'
+export { PseudocodeError, ParserError, InterpreterError, RuntimeError } from './errors.js'

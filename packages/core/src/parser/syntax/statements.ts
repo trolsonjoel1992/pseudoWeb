@@ -10,7 +10,7 @@ import type {
   StatementNode,
   VariableDeclarationNode,
 } from '../ast'
-import { TokenType } from '../../lexer/tokenTypes'
+import { TokenType } from '../../lexer/types'
 import type { ParserContext } from '../state'
 import { parseStatement } from '../orchestrator/dispatcher'
 import { parseVariableDeclaration as decParseVariableDeclaration } from './declarations'

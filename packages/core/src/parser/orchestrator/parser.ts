@@ -1,4 +1,4 @@
-import type { Token } from '../../lexer/lexer'
+import type { Token } from '../../lexer/types'
 import type { ActionNode } from '../ast'
 import { parseProgram } from '../syntax/statements'
 import { type ParserContext } from '../state'

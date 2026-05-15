@@ -1,4 +1,4 @@
-import { TokenType } from './tokenTypes'
+import { TokenType } from './tokenType.js'
 
 export const KEYWORDS: Readonly<Record<string, TokenType>> = {
   accion: TokenType.Accion,
@@ -40,9 +40,8 @@ export const KEYWORDS: Readonly<Record<string, TokenType>> = {
 }
 
 export const resolveIdentifierType = (lexeme: string): TokenType => {
-  // DIV y MOD son obligatoriamente en mayúsculas.
   if (lexeme === 'DIV') return TokenType.Div
   if (lexeme === 'MOD') return TokenType.Mod
 
-  return KEYWORDS[lexeme.toLowerCase()] ?? TokenType.Identificador;
+  return KEYWORDS[lexeme.toLowerCase()] ?? TokenType.Identificador
 }

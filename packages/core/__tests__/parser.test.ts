@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Lexer } from '../src/lexer/lexer'
+import { Lexer } from '../src/lexer'
 import { Parser } from '../src/parser'
 
 describe('Parser', () => {

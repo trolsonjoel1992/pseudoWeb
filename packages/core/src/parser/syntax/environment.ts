@@ -6,7 +6,7 @@ import type {
   EnvironmentBlockNode,
   LiteralValue,
 } from '../ast'
-import { TokenType } from '../../lexer/tokenTypes'
+import { TokenType } from '../../lexer/types'
 import type { ParserContext } from '../state'
 import { parseVariableDeclaration as decParseVariableDeclaration } from './declarations'
 import { parseFunction, parseProcedure } from './callables'

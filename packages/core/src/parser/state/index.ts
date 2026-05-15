@@ -1,1 +1,1 @@
-export type { ParserContext } from './parserContext'
+export type { ParserContext } from './parserContext.js'

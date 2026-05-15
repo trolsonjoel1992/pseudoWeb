@@ -1,13 +1,8 @@
-import { LexerError } from '../../errors'
+import { ERR_UNTERMINATED_BLOCK_COMMENT } from '../constants/index.js'
+import { LexerError } from '../types/index.js'
+import type { ScannerContext } from '../types/index.js'
 
-type CommentScannerContext = {
-  line: number
-  column: number
-  isAtEnd: () => boolean
-  peek: () => string
-  peekNext: () => string
-  advance: () => string
-}
+type CommentScannerContext = ScannerContext
 
 export function skipBlockComment(context: CommentScannerContext): void {
   context.advance()
@@ -23,7 +18,7 @@ export function skipBlockComment(context: CommentScannerContext): void {
     context.advance()
   }
 
-  throw new LexerError('Comentario sin cerrar', context.line, context.column)
+  throw new LexerError(ERR_UNTERMINATED_BLOCK_COMMENT(context.line, context.column), context.line, context.column)
 }
 
 export function skipLineComment(context: CommentScannerContext): void {

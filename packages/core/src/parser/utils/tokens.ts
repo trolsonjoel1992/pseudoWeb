@@ -1,6 +1,6 @@
 import { ParserError } from '../../errors'
-import type { Token } from '../../lexer/lexer'
-import { TokenType } from '../../lexer/tokenTypes'
+import type { Token } from '../../lexer/types'
+import { TokenType } from '../../lexer/types'
 import type { ParserContext } from '../state'
 import { ERR_LOCATION_EOF, ERR_LOCATION_TOKEN } from '../constants'
 

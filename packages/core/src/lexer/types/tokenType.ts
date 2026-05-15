@@ -1,7 +1,6 @@
 // Enumeración de tipos de tokens para el intérprete de pseudocódigo
 
 export enum TokenType {
-  // Palabras clave
   Accion = "Accion",
   FinAccion = "FinAccion",
   Si = "Si",
@@ -31,48 +30,42 @@ export enum TokenType {
   Verdadero = "Verdadero",
   Falso = "Falso",
 
-  // Operadores
-  Asignacion = "Asignacion", // :=
-  Suma = "Suma", // +
-  Resta = "Resta", // -
-  Multiplicacion = "Multiplicacion", // *
-  Division = "Division", // /
-  Div = "Div", // DIV
-  Mod = "Mod", // MOD
-  Potencia = "Potencia", // **
+  Asignacion = "Asignacion",
+  Suma = "Suma",
+  Resta = "Resta",
+  Multiplicacion = "Multiplicacion",
+  Division = "Division",
+  Div = "Div",
+  Mod = "Mod",
+  Potencia = "Potencia",
 
-  // Operadores relacionales
-  Igual = "Igual", // =
-  Distinto = "Distinto", // <>
-  Menor = "Menor", // <
-  Mayor = "Mayor", // >
-  MenorIgual = "MenorIgual", // <=
-  MayorIgual = "MayorIgual", // >=
+  Igual = "Igual",
+  Distinto = "Distinto",
+  Menor = "Menor",
+  Mayor = "Mayor",
+  MenorIgual = "MenorIgual",
+  MayorIgual = "MayorIgual",
 
-  // Operadores lógicos
   Y = "Y",
   O = "O",
   No = "No",
 
-  // Delimitadores
-  ParentesisIzquierdo = "ParentesisIzquierdo", // (
-  ParentesisDerecho = "ParentesisDerecho", // )
-  DosPuntos = "DosPuntos", // :
-  Coma = "Coma", // ,
-  Rango = "Rango", // ..
+  ParentesisIzquierdo = "ParentesisIzquierdo",
+  ParentesisDerecho = "ParentesisDerecho",
+  DosPuntos = "DosPuntos",
+  Coma = "Coma",
+  Rango = "Rango",
 
-  // Literales
   Entero = "Entero",
   Real = "Real",
   Caracter = "Caracter",
   Logico = "Logico",
   Alfanumerico = "Alfanumerico",
 
-  // Otros
   Identificador = "Identificador",
   Comentario = "Comentario",
-  Desconocido = "Desconocido", // Token no reconocido
-  EOF = "EOF", // Final del archivo
-  PuntoYComa = "PuntoYComa", // ;
-  SaltoDeLinea = "SaltoDeLinea", // \n
+  Desconocido = "Desconocido",
+  EOF = "EOF",
+  PuntoYComa = "PuntoYComa",
+  SaltoDeLinea = "SaltoDeLinea",
 }
