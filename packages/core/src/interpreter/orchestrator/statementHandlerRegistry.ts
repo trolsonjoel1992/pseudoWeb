@@ -11,6 +11,8 @@
 import type { StatementNode } from '../../parser/ast'
 import type { EvaluatorContext } from '../types/evaluatorContext'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 
 /**
  * Handler function signature
@@ -33,7 +35,12 @@ export class StatementHandlerRegistry {
    */
   public register(type: string, handler: StatementHandler): void {
     if (this.handlers.has(type)) {
-      throw new RuntimeError(`Handler already registered for statement type: ${type}`)
+      throw new RuntimeError({
+        code: ErrorCode.GEN_UNKNOWN,
+        message: `Handler already registered for statement type: ${type}`,
+        module: 'interpreter',
+        context: { type },
+      })
     }
     this.handlers.set(type, handler)
   }
@@ -47,7 +54,12 @@ export class StatementHandlerRegistry {
   public async dispatch(node: StatementNode, context: EvaluatorContext): Promise<void> {
     const handler = this.handlers.get(node.type)
     if (!handler) {
-      throw new RuntimeError(`No handler registered for statement type: ${node.type}`)
+      throw new RuntimeError({
+        code: ErrorCode.GEN_UNKNOWN,
+        message: `No handler registered for statement type: ${node.type}`,
+        module: 'interpreter',
+        context: { type: node.type },
+      })
     }
     await handler(node, context)
   }

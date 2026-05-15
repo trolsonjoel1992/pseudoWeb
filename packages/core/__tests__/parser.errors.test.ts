@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Lexer } from '../src/lexer'
 import { Parser } from '../src/parser'
+import { ErrorCode } from '../src/errors'
 import { ERR_CONSTANTS_BEFORE_VARIABLES, ERR_VARIABLES_BEFORE_CALLABLES, ERR_EXPECTED_AMBIENTE_BLOCK, ERR_EXPECTED_PROCESO_BLOCK, ERR_EXPECTED_FIN_ACCION, ERR_EXPECTED_PROCESO_IN_FUNCTION, ERR_EXPECTED_FIN_FUNCTION } from '../src/parser/constants'
 
 describe('Parser — errores negativos', () => {
@@ -12,7 +13,12 @@ Ambiente
 Proceso
 FinAccion`
 
-    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow(ERR_CONSTANTS_BEFORE_VARIABLES)
+    try {
+      new Parser(new Lexer(source).tokenize()).parse()
+      throw new Error('Se esperaba que parse lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.PAR_UNEXPECTED_TOKEN)
+    }
   })
 
   it('error: variable después de función', () => {
@@ -26,7 +32,12 @@ Ambiente
 Proceso
 FinAccion`
 
-    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow(ERR_VARIABLES_BEFORE_CALLABLES)
+    try {
+      new Parser(new Lexer(source).tokenize()).parse()
+      throw new Error('Se esperaba que parse lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.PAR_UNEXPECTED_TOKEN)
+    }
   })
 
   it('error: programa sin Ambiente', () => {
@@ -34,7 +45,12 @@ FinAccion`
 Proceso
 FinAccion`
 
-    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow(ERR_EXPECTED_AMBIENTE_BLOCK)
+    try {
+      new Parser(new Lexer(source).tokenize()).parse()
+      throw new Error('Se esperaba que parse lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.PAR_UNEXPECTED_TOKEN)
+    }
   })
 
   it('error: programa sin Proceso', () => {
@@ -42,7 +58,12 @@ FinAccion`
 Ambiente
 FinAccion`
 
-    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow(ERR_EXPECTED_PROCESO_BLOCK)
+    try {
+      new Parser(new Lexer(source).tokenize()).parse()
+      throw new Error('Se esperaba que parse lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.PAR_UNEXPECTED_TOKEN)
+    }
   })
 
   it('error: programa sin FinAccion', () => {
@@ -51,7 +72,12 @@ Ambiente
 Proceso
   Escribir("ok")`
 
-    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow(ERR_EXPECTED_FIN_ACCION)
+    try {
+      new Parser(new Lexer(source).tokenize()).parse()
+      throw new Error('Se esperaba que parse lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.PAR_UNEXPECTED_TOKEN)
+    }
   })
 
   it('error: función sin Proceso', () => {
@@ -62,7 +88,12 @@ Ambiente
 Proceso
 FinAccion`
 
-    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow(ERR_EXPECTED_PROCESO_IN_FUNCTION)
+    try {
+      new Parser(new Lexer(source).tokenize()).parse()
+      throw new Error('Se esperaba que parse lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.PAR_UNEXPECTED_TOKEN)
+    }
   })
 
   it('error: función sin FinFuncion', () => {
@@ -74,6 +105,11 @@ Ambiente
 Proceso
 FinAccion`
 
-    expect(() => new Parser(new Lexer(source).tokenize()).parse()).toThrow(ERR_EXPECTED_FIN_FUNCTION)
+    try {
+      new Parser(new Lexer(source).tokenize()).parse()
+      throw new Error('Se esperaba que parse lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.PAR_UNEXPECTED_TOKEN)
+    }
   })
 })

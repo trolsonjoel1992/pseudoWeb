@@ -1,4 +1,6 @@
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 
 /**
  * Local Errors - Dynamic value handling error messages
@@ -24,13 +26,23 @@ export function isTruthy(value: unknown): boolean {
 
 export function assertDefinedValue(value: unknown, operation: string): void {
   if (value === null || value === undefined) {
-    throw new RuntimeError(Errors.NULL_VALUE_NOT_ALLOWED(operation))
+    throw new RuntimeError({
+      code: ErrorCode.RUN_INVALID_ARGUMENT,
+      message: Errors.NULL_VALUE_NOT_ALLOWED(operation),
+      module: 'interpreter',
+      context: { operation },
+    })
   }
 }
 
 export function toNumber(value: unknown): number {
   if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) {
-    throw new RuntimeError(Errors.CANNOT_CONVERT_TO_NUMBER(value))
+    throw new RuntimeError({
+      code: ErrorCode.RUN_TYPE_MISMATCH,
+      message: Errors.CANNOT_CONVERT_TO_NUMBER(value),
+      module: 'interpreter',
+      context: { value },
+    })
   }
 
   return value
@@ -40,6 +52,10 @@ export function toComparable(value: unknown): string | number {
   if (typeof value === 'number') {
     return value
   }
-
-  throw new RuntimeError(Errors.CANNOT_COMPARE_NON_NUMERIC(value))
+  throw new RuntimeError({
+    code: ErrorCode.RUN_TYPE_MISMATCH,
+    message: Errors.CANNOT_COMPARE_NON_NUMERIC(value),
+    module: 'interpreter',
+    context: { value },
+  })
 }

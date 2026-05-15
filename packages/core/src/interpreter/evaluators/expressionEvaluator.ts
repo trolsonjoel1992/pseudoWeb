@@ -1,5 +1,7 @@
 import type { BinaryExpressionNode, ExpressionNode, FunctionCallNode, UnaryExpressionNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import { assertDefinedValue, isTruthy, toComparable } from '../utils/valueUtils'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import type { ExpressionEvaluatorContext } from '../types/evaluatorContextContracts'
@@ -19,7 +21,14 @@ export async function evaluateExpressionNode(node: ExpressionNode, context: Expr
     case 'FunctionCall':
       return await evaluateFunctionCallExpression(node, context)
     default:
-      throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_EXPRESSION((node as { type: string }).type))
+      throw new RuntimeError({
+        code: ErrorCode.GEN_UNKNOWN,
+        message: ERROR_MESSAGES.UNKNOWN_EXPRESSION((node as { type: string }).type),
+        line: (node as any).line,
+        column: (node as any).column,
+        module: 'interpreter',
+        context: { nodeType: (node as { type: string }).type },
+      })
   }
 }
 
@@ -33,7 +42,12 @@ async function evaluateUnaryExpression(node: UnaryExpressionNode, context: Expre
     case 'No':
       return !isTruthy(right)
     default:
-      throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_UNARY_OPERATOR(node.operator))
+      throw new RuntimeError({
+        code: ErrorCode.GEN_UNKNOWN,
+        message: ERROR_MESSAGES.UNKNOWN_UNARY_OPERATOR(node.operator),
+        module: 'interpreter',
+        context: { operator: node.operator },
+      })
   }
 }
 
@@ -55,17 +69,32 @@ async function evaluateBinaryExpression(node: BinaryExpressionNode, context: Exp
       return leftNumber() * rightNumber()
     case 'Division':
       if (rightNumber() === 0) {
-        throw new RuntimeError(ERROR_MESSAGES.DIVISION_BY_ZERO)
+        throw new RuntimeError({
+          code: ErrorCode.RUN_DIVISION_BY_ZERO,
+          message: buildMessage(ErrorCode.RUN_DIVISION_BY_ZERO),
+          module: 'interpreter',
+          context: { operator: 'Division' },
+        })
       }
       return leftNumber() / rightNumber()
     case 'Div':
       if (rightNumber() === 0) {
-        throw new RuntimeError(ERROR_MESSAGES.INTEGER_DIVISION_BY_ZERO)
+        throw new RuntimeError({
+          code: ErrorCode.RUN_DIVISION_BY_ZERO,
+          message: buildMessage(ErrorCode.RUN_DIVISION_BY_ZERO),
+          module: 'interpreter',
+          context: { operator: 'Div' },
+        })
       }
       return Math.trunc(leftNumber() / rightNumber())
     case 'Mod':
       if (rightNumber() === 0) {
-        throw new RuntimeError(ERROR_MESSAGES.MODULO_BY_ZERO)
+        throw new RuntimeError({
+          code: ErrorCode.RUN_DIVISION_BY_ZERO,
+          message: buildMessage(ErrorCode.RUN_DIVISION_BY_ZERO),
+          module: 'interpreter',
+          context: { operator: 'Mod' },
+        })
       }
       return leftNumber() % rightNumber()
     case 'Potencia':
@@ -87,7 +116,12 @@ async function evaluateBinaryExpression(node: BinaryExpressionNode, context: Exp
     case 'O':
       return isTruthy(left) || isTruthy(right)
     default:
-      throw new RuntimeError(ERROR_MESSAGES.UNKNOWN_BINARY_OPERATOR(node.operator))
+      throw new RuntimeError({
+        code: ErrorCode.GEN_UNKNOWN,
+        message: ERROR_MESSAGES.UNKNOWN_BINARY_OPERATOR(node.operator),
+        module: 'interpreter',
+        context: { operator: node.operator },
+      })
   }
 }
 

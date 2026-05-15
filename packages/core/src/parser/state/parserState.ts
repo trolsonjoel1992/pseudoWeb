@@ -1,6 +1,8 @@
 import type { Token } from '../../lexer/types'
 import { TokenType } from '../../lexer/types'
 import { ParserError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import type { ParserContext } from './parserContext'
 import { ERR_EXPECTED_CLOSE_PAREN_IN_LIST, ERR_LOCATION_EOF, ERR_LOCATION_TOKEN } from '../constants'
 
@@ -107,6 +109,14 @@ export class ParserStateImpl implements ParserContext {
   parserError(message: string): ParserError {
     const token = this.peek()
     const location = token.type === TokenType.EOF ? ERR_LOCATION_EOF : ERR_LOCATION_TOKEN(token.lexeme)
-    return new ParserError(`${message} ${location}`, token.line, token.column)
+    const fullMessage = `${message} ${location}`
+    return new ParserError({
+      code: ErrorCode.PAR_UNEXPECTED_TOKEN,
+      message: fullMessage,
+      line: token.line,
+      column: token.column,
+      module: 'parser',
+      context: { token: token.type, lexeme: token.lexeme },
+    })
   }
 }

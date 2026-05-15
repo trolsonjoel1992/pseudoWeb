@@ -1,5 +1,7 @@
 import type { DataType } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import type { Environment } from '../environment/environment'
 
@@ -31,7 +33,11 @@ export function resolveSwitchValueType(value: unknown): 'number' | 'string' | 'b
   if (typeof value === 'number') return 'number'
   if (typeof value === 'string') return 'string'
   if (typeof value === 'boolean') return 'boolean'
-  throw new RuntimeError(ERROR_MESSAGES.SWITCH_UNSUPPORTED_TYPE)
+  throw new RuntimeError({
+    code: ErrorCode.GEN_UNKNOWN,
+    message: ERROR_MESSAGES.SWITCH_UNSUPPORTED_TYPE,
+    module: 'interpreter',
+  })
 }
 
 /**
@@ -49,7 +55,12 @@ export class TypeValidator {
   public assertValueMatchesType(value: unknown, expectedType: DataType, contextLabel: string): void {
     if (typeof expectedType === 'object' && expectedType.kind === 'AN') {
       if (typeof value === 'string' && value.length <= expectedType.maxLength) return
-      throw new RuntimeError(Errors.INCOMPATIBLE_TYPE_AN(contextLabel, expectedType.maxLength))
+      throw new RuntimeError({
+        code: ErrorCode.RUN_TYPE_MISMATCH,
+        message: Errors.INCOMPATIBLE_TYPE_AN(contextLabel, expectedType.maxLength),
+        module: 'interpreter',
+        context: { contextLabel, maxLength: expectedType.maxLength },
+      })
     }
 
     switch (expectedType) {
@@ -70,7 +81,12 @@ export class TypeValidator {
         break
     }
 
-    throw new RuntimeError(Errors.INCOMPATIBLE_TYPE(contextLabel, expectedType))
+    throw new RuntimeError({
+      code: ErrorCode.RUN_TYPE_MISMATCH,
+      message: Errors.INCOMPATIBLE_TYPE(contextLabel, expectedType),
+      module: 'interpreter',
+      context: { contextLabel, expectedType },
+    })
   }
 
   /**
@@ -91,13 +107,23 @@ export class TypeValidator {
 
   public assertVariableExists(variableName: string, environment: Environment): void {
     if (!environment.has(variableName)) {
-      throw new RuntimeError(ERROR_MESSAGES.VARIABLE_NOT_FOUND(variableName))
+      throw new RuntimeError({
+        code: ErrorCode.RUN_UNDEFINED_IDENTIFIER,
+        message: ERROR_MESSAGES.VARIABLE_NOT_FOUND(variableName),
+        module: 'interpreter',
+        context: { variableName },
+      })
     }
   }
 
   public assertNumberType(value: unknown, context: string = 'valor'): number {
     if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) {
-      throw new RuntimeError(ERROR_MESSAGES.INVALID_NUMBER(value, context))
+      throw new RuntimeError({
+        code: ErrorCode.RUN_TYPE_MISMATCH,
+        message: ERROR_MESSAGES.INVALID_NUMBER(value, context),
+        module: 'interpreter',
+        context: { value, context },
+      })
     }
 
     return value
@@ -112,13 +138,21 @@ export class TypeValidator {
 
     if (isComparison) {
       if (expressionType !== 'number' || caseType !== 'number') {
-        throw new RuntimeError(ERROR_MESSAGES.SWITCH_COMPARISON_NUMERIC_ONLY)
+        throw new RuntimeError({
+          code: ErrorCode.RUN_TYPE_MISMATCH,
+          message: ERROR_MESSAGES.SWITCH_COMPARISON_NUMERIC_ONLY,
+          module: 'interpreter',
+        })
       }
       return
     }
 
     if (expressionType !== caseType) {
-      throw new RuntimeError(ERROR_MESSAGES.SWITCH_TYPE_MISMATCH)
+      throw new RuntimeError({
+        code: ErrorCode.RUN_TYPE_MISMATCH,
+        message: ERROR_MESSAGES.SWITCH_TYPE_MISMATCH,
+        module: 'interpreter',
+      })
     }
   }
 }

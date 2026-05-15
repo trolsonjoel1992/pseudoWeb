@@ -1,5 +1,7 @@
 import type { DataType } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import { resolveSwitchValueType } from './typeValidator'
 
 /**
@@ -34,7 +36,12 @@ export class TypeCoercer {
 
     if (typeof expectedType === 'object' && expectedType.kind === 'AN') {
       if (typeof inputValue === 'string' && inputValue.length <= expectedType.maxLength) return inputValue
-      throw new RuntimeError(Errors.INCOMPATIBLE_VALUE_AN(variableName, expectedType.maxLength))
+      throw new RuntimeError({
+        code: ErrorCode.RUN_TYPE_MISMATCH,
+        message: Errors.INCOMPATIBLE_VALUE_AN(variableName, expectedType.maxLength),
+        module: 'interpreter',
+        context: { variableName, maxLength: expectedType.maxLength },
+      })
     }
 
     switch (expectedType) {
@@ -62,7 +69,12 @@ export class TypeCoercer {
         break
     }
 
-    throw new RuntimeError(Errors.INCOMPATIBLE_VALUE(variableName, expectedType))
+    throw new RuntimeError({
+      code: ErrorCode.RUN_TYPE_MISMATCH,
+      message: Errors.INCOMPATIBLE_VALUE(variableName, expectedType),
+      module: 'interpreter',
+      context: { variableName, expectedType },
+    })
   }
 
   public resolveSwitchValueType(value: unknown): 'number' | 'string' | 'boolean' {

@@ -1,4 +1,6 @@
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 import type { BuiltinFunction } from './registry'
 
 /**
@@ -15,11 +17,20 @@ export function createREDOND(): BuiltinFunction {
     name: 'REDOND',
     execute: (args: unknown[]): unknown => {
       if (args.length !== 1) {
-        throw new RuntimeError(Errors.REDOND_INVALID_ARGS())
+        throw new RuntimeError({
+          code: ErrorCode.RUN_INVALID_ARGUMENT,
+          message: Errors.REDOND_INVALID_ARGS(),
+          module: 'interpreter',
+        })
       }
       const value = args[0]
       if (typeof value !== 'number' || !Number.isFinite(value)) {
-        throw new RuntimeError(Errors.REDOND_INVALID_TYPE())
+        throw new RuntimeError({
+          code: ErrorCode.RUN_TYPE_MISMATCH,
+          message: Errors.REDOND_INVALID_TYPE(),
+          module: 'interpreter',
+          context: { value },
+        })
       }
       return Math.round(value)
     },

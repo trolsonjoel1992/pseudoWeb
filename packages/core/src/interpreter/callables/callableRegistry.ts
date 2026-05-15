@@ -1,5 +1,7 @@
 import type { FunctionDeclarationNode, ProcedureDeclarationNode, EnvironmentBlockNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
 
 /**
  * Local Errors - Dynamic callable registry error messages
@@ -16,14 +18,24 @@ export class CallableRegistry {
   public registerFromEnvironment(ambiente: EnvironmentBlockNode): void {
     for (const declaration of ambiente.functions) {
       if (this.functions.has(declaration.name) || this.procedures.has(declaration.name)) {
-        throw new RuntimeError(Errors.DUPLICATE_CALLABLE(declaration.name))
+        throw new RuntimeError({
+          code: ErrorCode.RUN_INVALID_ARGUMENT,
+          message: Errors.DUPLICATE_CALLABLE(declaration.name),
+          module: 'interpreter',
+          context: { name: declaration.name },
+        })
       }
       this.functions.set(declaration.name, declaration)
     }
 
     for (const declaration of ambiente.procedures) {
       if (this.functions.has(declaration.name) || this.procedures.has(declaration.name)) {
-        throw new RuntimeError(Errors.DUPLICATE_CALLABLE(declaration.name))
+        throw new RuntimeError({
+          code: ErrorCode.RUN_INVALID_ARGUMENT,
+          message: Errors.DUPLICATE_CALLABLE(declaration.name),
+          module: 'interpreter',
+          context: { name: declaration.name },
+        })
       }
       this.procedures.set(declaration.name, declaration)
     }

@@ -1,5 +1,6 @@
 import type { ForNode } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
+import { ErrorCode } from '../../errors.js'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import { createLoopGuard } from './loopGuard'
 import type { ControlFlowEvaluatorContext } from '../types/evaluatorContextContracts'
@@ -15,7 +16,11 @@ export async function evaluateForNode(node: ForNode, context: ControlFlowEvaluat
   const guard = createLoopGuard()
 
   if (step === 0) {
-    throw new RuntimeError(ERROR_MESSAGES.FOR_STEP_ZERO)
+    throw new RuntimeError({
+      code: ErrorCode.RUN_INVALID_ARGUMENT,
+      message: ERROR_MESSAGES.FOR_STEP_ZERO,
+      module: 'interpreter',
+    })
   }
 
   if (step > 0) {
