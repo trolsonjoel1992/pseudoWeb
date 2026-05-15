@@ -1,0 +1,42 @@
+Analiza detenidamente la carpeta especificada y todos sus archivos de código. 
+Tu objetivo es evaluar la calidad del proyecto en relación con:
+
+1. Arquitectura:
+   - Separación de responsabilidades (presentación, lógica de negocio, acceso a datos).
+   - Consistencia en el estilo arquitectónico (ej. MVC, hexagonal, microservicios).
+   - Escalabilidad y extensibilidad.
+   - Nivel de acoplamiento y cohesión entre módulos.
+
+2. Distribución de archivos:
+   - Organización clara y predecible de carpetas y archivos.
+   - Nombres significativos y coherentes.
+   - Separación entre configuración y código fuente.
+   - Modularidad y reutilización del código.
+
+3. Patrones de diseño:
+   - Identificación de patrones aplicados (Singleton, Factory, Observer, Strategy, etc.).
+   - Evaluación de si los patrones están bien aplicados o generan sobreingeniería.
+   - Principios SOLID y buenas prácticas de diseño.
+   - Uso de patrones arquitectónicos (CQRS, repositorios, event sourcing, etc.) si corresponde.
+
+4. Buenas prácticas adicionales:
+   - Existencia y calidad de pruebas unitarias e integración.
+   - Documentación clara y útil.
+   - Consistencia en estilos de codificación (linters, convenciones).
+   - Manejo robusto de errores y excepciones.
+
+Entrega un informe detallado con:
+- Fortalezas encontradas.
+- Debilidades o problemas detectados.
+- Recomendaciones concretas de mejora.
+
+Evalúa la arquitectura actual del proyecto en core/src, donde los módulos lexer, parser e interpreter contienen una carpeta constants con mensajes de error. 
+Analiza si es una buena práctica mantener esos mensajes dentro de cada módulo o si deberían centralizarse en un único archivo (por ejemplo errors.ts o constants/errors.ts). 
+Considera los siguientes criterios:
+- Principio de responsabilidad única (SRP).
+- Evitar duplicación y facilitar mantenimiento.
+- Claridad semántica: distinguir entre constantes propias del módulo (tokens, palabras clave, reglas) y mensajes transversales (errores).
+- Impacto en la extensibilidad y escalabilidad del sistema.
+- Posibles desventajas de centralizar (acoplamiento, dependencia excesiva).
+
+Concluye si la práctica de mover los mensajes de error a un módulo centralizado debería implementarse en este proyecto y justifica tu recomendación.
