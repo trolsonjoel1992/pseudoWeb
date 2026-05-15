@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { Lexer } from '../src/lexer/lexer'
-import { TokenType } from '../src/lexer/tokenTypes'
+import { Lexer } from '../src/lexer'
+import { ErrorCode } from '../src/errors'
+import { TokenType } from '../src/lexer/types'
 
 describe('Lexer', () => {
   it('tokeniza declaraciones y operadores básicos', () => {
@@ -40,6 +41,21 @@ describe('Lexer', () => {
   })
 
   it('falla con comentario sin cerrar', () => {
-    expect(() => new Lexer('/* comentario').tokenize()).toThrow('Comentario sin cerrar')
+    try {
+      new Lexer('/* comentario').tokenize()
+      throw new Error('Se esperaba que tokenize lanzara')
+    } catch (e: any) {
+      expect(e.code).toBe(ErrorCode.LEX_UNTERMINATED_STRING)
+    }
+  })
+
+  it('reconoce DIV/MOD en mayúscula y rechaza minúscula como operador', () => {
+    const tokensUpper = new Lexer('a := 10 DIV 3\nb := 10 MOD 3').tokenize()
+    expect(tokensUpper.some((token) => token.type === TokenType.Div)).toBe(true)
+    expect(tokensUpper.some((token) => token.type === TokenType.Mod)).toBe(true)
+
+    const tokensLower = new Lexer('a := 10 div 3').tokenize()
+    expect(tokensLower.some((token) => token.type === TokenType.Div)).toBe(false)
+    expect(tokensLower.some((token) => token.lexeme === 'div' && token.type === TokenType.Identificador)).toBe(true)
   })
 })

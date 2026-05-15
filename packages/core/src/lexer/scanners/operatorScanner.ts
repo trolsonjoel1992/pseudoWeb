@@ -1,19 +1,17 @@
-import { LexerError } from '../../errors'
-import { TokenType } from '../tokenTypes'
+import { ERR_UNEXPECTED_CHARACTER } from '../constants/index.js'
+import { LexerError, TokenType } from '../types/index.js'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
+import type { ScannerContext } from '../types/index.js'
 
 type Literal = string | number | boolean | null
 
-type OperatorScannerContext = {
-  line: number
-  column: number
-  char: string
-  peekNext: () => string
-  advance: () => string
+type OperatorScannerContext = ScannerContext & {
   addToken: (type: TokenType, lexeme: string, literal: Literal, line: number, column: number) => void
 }
 
-export function scanOperatorToken(context: OperatorScannerContext): void {
-  const { char, line, column } = context
+export function scanOperatorToken(context: OperatorScannerContext, char: string): void {
+  const { line, column } = context
 
   switch (char) {
     case ':':
@@ -119,5 +117,12 @@ export function scanOperatorToken(context: OperatorScannerContext): void {
       break
   }
 
-  throw new LexerError(`Caracter inesperado '${char}'`, line, column)
+  throw new LexerError({
+    code: ErrorCode.LEX_UNEXPECTED_CHAR,
+    message: buildMessage(ErrorCode.LEX_UNEXPECTED_CHAR, char),
+    line,
+    column,
+    module: 'lexer',
+    context: { char },
+  })
 }

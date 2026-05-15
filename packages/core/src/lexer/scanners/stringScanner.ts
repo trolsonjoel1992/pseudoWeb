@@ -1,27 +1,30 @@
-import { LexerError } from '../../errors'
-import { TokenType } from '../tokenTypes'
+import { ERR_UNTERMINATED_STRING } from '../constants/index.js'
+import { LexerError, TokenType } from '../types/index.js'
+import { ErrorCode } from '../../errors.js'
+import { buildMessage } from '../../constants/errorMessages.js'
+import type { ScannerContext } from '../types/index.js'
 
 type Literal = string | number | boolean | null
 
-type StringScannerContext = {
-  quote: '"' | "'"
-  line: number
-  column: number
-  isAtEnd: () => boolean
-  peek: () => string
-  advance: () => string
-  sliceLexeme: () => string
+type StringScannerContext = ScannerContext & {
   addToken: (type: TokenType, lexeme: string, literal: Literal, line: number, column: number) => void
 }
 
-export function scanStringToken(context: StringScannerContext): void {
+export function scanStringToken(context: StringScannerContext, quote: '"' | "'"): void {
   context.advance()
 
   let value = ''
 
-  while (!context.isAtEnd() && context.peek() !== context.quote) {
+  while (!context.isAtEnd() && context.peek() !== quote) {
     if (context.peek() === '\n') {
-      throw new LexerError('Cadena sin cerrar', context.line, context.column)
+      throw new LexerError({
+        code: ErrorCode.LEX_UNTERMINATED_STRING,
+        message: buildMessage(ErrorCode.LEX_UNTERMINATED_STRING),
+        line: context.line,
+        column: context.column,
+        module: 'lexer',
+        context: { char: context.peek() },
+      })
     }
 
     if (context.peek() === '\\' && !context.isAtEnd()) {
@@ -58,11 +61,18 @@ export function scanStringToken(context: StringScannerContext): void {
   }
 
   if (context.isAtEnd()) {
-    throw new LexerError('Cadena sin cerrar', context.line, context.column)
+    throw new LexerError({
+      code: ErrorCode.LEX_UNTERMINATED_STRING,
+      message: buildMessage(ErrorCode.LEX_UNTERMINATED_STRING),
+      line: context.line,
+      column: context.column,
+      module: 'lexer',
+      context: {},
+    })
   }
 
   context.advance()
 
-  const type = context.quote === '"' ? TokenType.Alfanumerico : TokenType.Caracter
+  const type = quote === '"' ? TokenType.Alfanumerico : TokenType.Caracter
   context.addToken(type, context.sliceLexeme(), value, context.line, context.column)
 }
