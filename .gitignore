@@ -1,3 +1,11 @@
-# Ignore docs and prototypes at workspace root (outside pseudoWeb/)
-/*.md
-/*.html
+# Ignora todo por defecto
+/*
+
+# .gitignore
+!.gitignore
+
+# No ignores la carpeta pseudoWeb
+!/pseudoWeb/
+
+# Dentro de pseudoWeb, no ignores nada
+/pseudoWeb/*

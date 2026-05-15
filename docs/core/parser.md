@@ -59,6 +59,16 @@ flowchart TD
   - [parseIf()](../../packages/core/src/parser/parserStatements.ts#L82), [parseWhile()](../../packages/core/src/parser/parserStatements.ts#L92) y [parseFor()](../../packages/core/src/parser/parserStatements.ts#L101) modelan control de flujo.
   - [parseBlock()](../../packages/core/src/parser/parserStatements.ts#L114) agrupa sentencias hasta un token tope.
 
+  ## Callables: forma simple vs compleja
+
+  Después de la firma de una `Funcion` o `Procedimiento`, el parser aplica una regla de discriminación determinista (un único token de lookahead):
+
+  - Si el siguiente token significativo es `Ambiente` → forma COMPLEJA (se parsea `Ambiente` y luego `Proceso`).
+  - Si el siguiente token significativo es `Proceso` → forma COMPLEJA (sin variables locales).
+  - Cualquier otro token → forma SIMPLE: el cuerpo del callable se parsea directamente como el `Proceso` hasta `FinFuncion`/`FinProcedimiento`.
+
+  La lógica está implementada en [packages/core/src/parser/syntax/callables.ts](../../packages/core/src/parser/syntax/callables.ts#L1) y el AST se normaliza para que el campo `ambiente` exista siempre (se usa `EMPTY_ENVIRONMENT_BLOCK`). Ver [packages/core/src/parser/types/environment.ts](../../packages/core/src/parser/types/environment.ts#L1) para el nodo `EnvironmentBlock` y la constante `EMPTY_ENVIRONMENT_BLOCK`.
+
 ## Expresiones por precedencia
 
 - [packages/core/src/parser/parserExpressions.ts](../../packages/core/src/parser/parserExpressions.ts#L1)
