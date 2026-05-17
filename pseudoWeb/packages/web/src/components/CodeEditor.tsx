@@ -64,9 +64,7 @@ export function CodeEditor({
           <button
             type="button"
             className={`inline-flex items-center gap-1 rounded-xl px-4 py-2 text-sm font-bold transition ${
-              hasCode && !isExecuting
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'cursor-not-allowed bg-slate-200 text-slate-400'
+              hasCode && !isExecuting ? 'run-button' : 'cursor-not-allowed bg-slate-200 text-slate-400'
             }`}
             onClick={onExecute}
             disabled={!hasCode || isExecuting}
@@ -77,11 +75,15 @@ export function CodeEditor({
         </div>
       </div>
 
-      <div className="flex h-[560px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner xl:h-[600px] flex-nowrap">
+      <div
+        className="flex h-[560px] overflow-hidden rounded-xl shadow-inner xl:h-[600px] flex-nowrap"
+        style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--panel-border)' }}
+      >
         {showLineNumbers && (
           <div
             ref={lineNumbersRef}
-            className="min-w-12 overflow-y-hidden border-r border-slate-200 bg-slate-50 px-2 py-3 text-right font-code text-[13px] leading-7 text-slate-400"
+            className="min-w-12 overflow-y-hidden px-2 py-3 text-right font-code text-[13px] leading-7"
+            style={{ borderRight: '1px solid var(--panel-border)', backgroundColor: 'color-mix(in srgb, var(--color-surface) 85%, var(--color-bg))', color: 'var(--color-muted)' }}
           >
             {lineNumbers.map((line) => (
               <p key={line}>{line}</p>
@@ -91,8 +93,8 @@ export function CodeEditor({
 
         <textarea
           ref={textareaRef}
-          className="h-full w-full resize-none overflow-x-auto bg-white px-4 py-3 font-code leading-7 text-slate-800 outline-none ring-blue-600 transition focus:ring-2"
-          style={{ whiteSpace: 'pre', fontSize: `${fontSize}px` }}
+          className="h-full w-full resize-none overflow-x-auto px-4 py-3 font-code leading-7 outline-none transition focus:ring-2"
+          style={{ whiteSpace: 'pre', fontSize: `${fontSize}px`, backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
