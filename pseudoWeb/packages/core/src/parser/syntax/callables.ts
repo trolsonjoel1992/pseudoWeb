@@ -28,25 +28,37 @@ export function parseParameterList(
   const parameters: ParameterNode[] = []
   if (!state.check(TokenType.ParentesisDerecho)) {
     do {
-      const paramStart = state.peek()
-      const paramName = state.consume(TokenType.Identificador, ERR_EXPECTED_PARAMETER_NAME).lexeme
-      if (localScopeNames.has(paramName)) {
-        throw state.parserError(ERR_REDECLARED_IDENTIFIER(paramName))
+      const groupStart = state.peek()
+      const nameTokens: { name: string; line: number; column: number }[] = []
+      // first name
+      const firstTok = state.consume(TokenType.Identificador, ERR_EXPECTED_PARAMETER_NAME)
+      nameTokens.push({ name: firstTok.lexeme, line: firstTok.line, column: firstTok.column })
+      // additional names separated by commas (part of the same typed group)
+      while (state.match(TokenType.Coma)) {
+        const nextTok = state.consume(TokenType.Identificador, ERR_EXPECTED_PARAMETER_NAME)
+        nameTokens.push({ name: nextTok.lexeme, line: nextTok.line, column: nextTok.column })
       }
-      if (parentScopeNames?.has(paramName)) {
-        throw state.parserError(ERR_SHADOWING_NOT_ALLOWED(paramName))
-      }
-      localScopeNames.add(paramName)
+
       state.consume(TokenType.DosPuntos, ERR_EXPECTED_COLON_IN_PARAMETER)
       const paramType = parseDataType(state)
-      parameters.push({
-        type: 'Parameter',
-        name: paramName,
-        dataType: paramType,
-        byReference: false,
-        line: paramStart.line,
-        column: paramStart.column,
-      })
+
+      for (const t of nameTokens) {
+        if (localScopeNames.has(t.name)) {
+          throw state.parserError(ERR_REDECLARED_IDENTIFIER(t.name))
+        }
+        if (parentScopeNames?.has(t.name)) {
+          throw state.parserError(ERR_SHADOWING_NOT_ALLOWED(t.name))
+        }
+        localScopeNames.add(t.name)
+        parameters.push({
+          type: 'Parameter',
+          name: t.name,
+          dataType: paramType,
+          byReference: false,
+          line: t.line,
+          column: t.column,
+        })
+      }
     } while (state.match(TokenType.Coma))
   }
   state.consume(TokenType.ParentesisDerecho, ERR_EXPECTED_CLOSE_PAREN_AFTER_PARAMS)

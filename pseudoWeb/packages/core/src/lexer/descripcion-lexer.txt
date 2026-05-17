@@ -23,8 +23,6 @@ lexer/
     index.ts
   types/
     index.ts
-    lexerError.ts
-    scannerContext.ts
     token.ts
     tokenRules.ts
     tokenType.ts

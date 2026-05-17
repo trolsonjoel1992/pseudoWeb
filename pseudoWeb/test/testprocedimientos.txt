@@ -1,0 +1,26 @@
+Accion pruebaProcedimientos : ES
+  Ambiente
+    globalEntero : Entero
+    globalTexto : Alfanumerico
+    
+    Procedimiento mostrar(valor : Entero)
+      Proceso
+        Escribir("Mostrando valor:", valor)
+      FinProcedimiento
+
+    Procedimiento asignarEntero(a, b, c, d, e: Entero)
+      Proceso
+        globalEntero := a + b + c + d + e
+      FinProcedimiento
+
+    
+    
+    Procedimiento imprimirGlobales(a: Entero, b: Real, c: Alfanumerico, d: Caracter, e: Logico)
+      Proceso
+        Escribir("Global Entero:", globalEntero)
+      FinProcedimiento
+
+  Proceso
+    mostrar(100)
+    asignarEntero(1,2,3,4,5)
+    imprimirGlobales(10, 5.5, "TextoExtra", 'X', verdadero)  FinAccion

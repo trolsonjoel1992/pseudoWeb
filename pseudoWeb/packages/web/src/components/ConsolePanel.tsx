@@ -10,6 +10,7 @@ type ConsolePanelProps = {
   isRuntimeError?: boolean
   runtimeError?: ExecutionError
   onClearConsole: () => void
+  onRestart?: () => void
 }
 
 export function ConsolePanel({
@@ -21,6 +22,7 @@ export function ConsolePanel({
   isRuntimeError = false,
   runtimeError,
   onClearConsole,
+  onRestart,
 }: ConsolePanelProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const consoleRef = useRef<HTMLDivElement>(null)
@@ -44,13 +46,24 @@ export function ConsolePanel({
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Salida</p>
           <h2 className="text-xl font-extrabold tracking-tight text-slate-900">Consola</h2>
         </div>
-        <button
-          type="button"
-          onClick={onClearConsole}
-          className="rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100"
-        >
-          Limpiar
-        </button>
+        <div className="flex items-center gap-2">
+          {onRestart ? (
+            <button
+              type="button"
+              onClick={onRestart}
+              className="rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-700 transition hover:bg-slate-100"
+            >
+              Reiniciar
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onClearConsole}
+            className="rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100"
+          >
+            Limpiar
+          </button>
+        </div>
       </div>
 
       <div

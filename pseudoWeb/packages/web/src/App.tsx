@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useInterpreter } from './hooks/useInterpreter'
 import { CodeEditor } from './components/CodeEditor'
 import { ConsolePanel } from './components/ConsolePanel'
@@ -34,6 +34,13 @@ function App() {
     setConsoleInput('')
     setIsConsoleCleared(true)
   }
+
+  // Si hay error en el resultado de la ejecución, redirigir siempre a la pantalla de errores
+  useEffect(() => {
+    if (result && result.success === false) {
+      setActiveMenu('errores')
+    }
+  }, [result])
 
   // Datos de consola y errores
   const consoleLines = useMemo(() => {
@@ -146,6 +153,7 @@ function App() {
                 onSubmitInput={handleSubmitInput}
                 isAwaitingInput={Boolean(inputRequest)}
                 onClearConsole={handleClearConsole}
+                onRestart={handleExecute}
               />
             )}
             {activeMenu === 'errores' && (
@@ -158,6 +166,7 @@ function App() {
                 onSubmitInput={handleSubmitInput}
                 isAwaitingInput={Boolean(inputRequest)}
                 onClearConsole={handleClearConsole}
+                onRestart={handleExecute}
               />
             )}
           </div>

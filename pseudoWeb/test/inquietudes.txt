@@ -1,0 +1,3 @@
+aparentemente no detecta variables declaradas pero no utilizadas
+globalTexto := t1 + "-" + t2 + "-" + t3 + "-" + t4 + "-" + t5 
+el error por falta de cierre de paréntesis: resultado := (sumar(15, 66) no es muy claro (ParserError: Se esperaba ')' después de la expresión en ' ') >Línea: 11>Columna: no disponible

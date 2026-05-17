@@ -1,0 +1,6 @@
+falta scroll horizontal en el editor de pseudocódigo agregarr tambien el wrap si se desea, pero el scroll horizontal es necesario para no perder la estructura del pseudocódigo al escribir lineas largas.
+zoom al editor de pseudocódigo, para poder aumentar el tamaño de letra y facilitar la lectura.
+palabras reservadas en color violeta, para mejorar la legibilidad del pseudocódigo.
+funcionalidades completas de editor de texto, como copiar, pegar, deshacer, rehacer, etc. shift + alt para seleccionar bloques de código, ctrl + shift + flechas para seleccionar palabras completas, etc. 
+la paleta de colores principal es el tema Quiet Calor 
+modo oscuro para el editor de pseudocódigo, para reducir la fatiga visual durante largas sesiones de programación. los colores del tema son los de github dark default
