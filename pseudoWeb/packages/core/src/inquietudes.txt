@@ -1,0 +1,2 @@
+Encontré el problema exacto: hay tokens con columna de inicio y otros con columna de fin según el scanner, y el cálculo actual asumía un solo formato. Voy a hacer el mapeo de posiciones tolerante a ambos casos para que el resaltado no falle en keywords. 
+esto es correcto o debería unificar el formato de tokens en el scanner?

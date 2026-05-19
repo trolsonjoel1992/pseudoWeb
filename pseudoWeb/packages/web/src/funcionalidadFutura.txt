@@ -1,0 +1,53 @@
+# Prompt para agente de animación de pseudocódigo
+
+Objetivo:
+- Mostrar de manera visual y paso a paso cómo se ejecuta un pseudocódigo.
+- Resaltar el flujo lógico, el estado de las variables y las decisiones tomadas.
+
+Comportamiento de la animación:
+1. **Inicio**
+   - Resaltar la primera línea de pseudocódigo.
+   - Mostrar panel de variables vacío o inicializado.
+
+2. **Ejecución paso a paso**
+   - Avanzar línea por línea.
+   - Cada vez que se evalúe una condición (ej. SI, MIENTRAS), mostrar visualmente:
+     - Condición evaluada (verdadero/falso).
+     - Flecha hacia el bloque que se ejecuta.
+   - Actualizar valores de variables en un panel lateral.
+
+3. **Bucles**
+   - Repetir la animación de la condición hasta que sea falsa.
+   - Mostrar contador de iteraciones para mayor claridad.
+
+4. **Condicionales**
+   - Si la condición es verdadera, resaltar el bloque correspondiente.
+   - Si es falsa, mostrar el salto al bloque alternativo.
+
+5. **Finalización**
+   - Indicar claramente cuándo el programa termina.
+   - Mostrar estado final de todas las variables.
+
+Estilo visual:
+- Resaltar la línea activa con color.
+- Animar transiciones con flechas o resaltados.
+- Panel lateral siempre visible con variables y sus valores.
+- Opcional: diagrama de flujo dinámico que se va iluminando según el recorrido.
+
+Interactividad:
+- Botones: “Ejecutar todo”, “Ejecutar siguiente”, “Reiniciar”.
+- Posibilidad de pausar y retroceder pasos.
+
+Meta:
+- La animación debe ser clara, educativa y fácil de seguir.
+- Evitar sobrecarga visual: usar colores y movimientos simples.
+
+
+resalta solo el numero de la linea en la que se encuentra luego aplica efecto a esa linea es como un brillo de izquierda a derecha (“shine animation” o “shimmer effect”.) simulando ejecucion luego avanza a la siguiente linea y repite el mismo efecto
+
+
+la idea es generar una revision de la ejecucucion del pseudocodigo. 
+una vez se haya ejecutado el coddigo de manera correcta se habilitaria la opcion de ver la animacion de la ejecucion del pseudocodigo, para que el usuario pueda entender mejor el flujo de su programa y como se van modificando las variables a lo largo de la ejecucion.
+necesitariamos un boton demostracion debajo de errores que nos va a permitir ver la animacion de la ejecucion del pseudocodigo, el boton se habilitaria solo si el resultado de la ejecucion es correcto, es decir, no hay errores de sintaxis ni errores de ejecucion.
+en el bloque de visualizacion se veria el pseudocodigo con la animacion de la linea activa, y al lado un panel ouput con las variables y sus valores que se van actualizando en tiempo real segun se ejecuta cada linea del pseudocodigo.
+debajo del bloque de pseudocodigo tendriamos el estado de las variables y a la derecha de este el input de las variables. seria algo asi como un video de la ejecucion del pseudocodigo, pero con la posibilidad de pausar, avanzar paso a paso, y reiniciar la animacion para volver a verla desde el inicio.

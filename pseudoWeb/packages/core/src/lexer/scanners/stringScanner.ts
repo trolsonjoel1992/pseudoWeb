@@ -10,6 +10,8 @@ type StringScannerContext = LexerContext & {
 }
 
 export function scanStringToken(context: StringScannerContext, quote: '"' | "'"): void {
+  const column = context.column
+
   context.advance()
 
   let value = ''
@@ -73,5 +75,5 @@ export function scanStringToken(context: StringScannerContext, quote: '"' | "'")
   context.advance()
 
   const type = quote === '"' ? TokenType.Alfanumerico : TokenType.Caracter
-  context.addToken(type, context.sliceLexeme(), value, context.line, context.column)
+  context.addToken(type, context.sliceLexeme(), value, context.line, column)
 }

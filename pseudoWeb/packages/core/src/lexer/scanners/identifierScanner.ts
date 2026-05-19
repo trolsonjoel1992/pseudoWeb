@@ -8,6 +8,8 @@ type IdentifierScannerContext = LexerContext & {
 }
 
 export function scanIdentifierToken(context: IdentifierScannerContext, isAlphaNumeric: (char: string) => boolean): void {
+  const column = context.column
+
   while (!context.isAtEnd() && isAlphaNumeric(context.peek())) {
     context.advance()
   }
@@ -16,5 +18,5 @@ export function scanIdentifierToken(context: IdentifierScannerContext, isAlphaNu
   const tokenType = resolveIdentifierType(lexeme)
   const literal = tokenType === TokenType.Verdadero ? true : tokenType === TokenType.Falso ? false : null
 
-  context.addToken(tokenType, lexeme, literal, context.line, context.column)
+  context.addToken(tokenType, lexeme, literal, context.line, column)
 }

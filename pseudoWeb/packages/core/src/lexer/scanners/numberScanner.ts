@@ -8,6 +8,8 @@ type NumberScannerContext = LexerContext & {
 }
 
 export function scanNumberToken(context: NumberScannerContext, isDigit: (char: string) => boolean): void {
+  const column = context.column
+
   while (!context.isAtEnd() && isDigit(context.peek())) {
     context.advance()
   }
@@ -26,5 +28,5 @@ export function scanNumberToken(context: NumberScannerContext, isDigit: (char: s
   const lexeme = context.sliceLexeme()
   const literal = tokenType === TokenType.Real ? Number(lexeme) : Number.parseInt(lexeme, 10)
 
-  context.addToken(tokenType, lexeme, literal, context.line, context.column)
+  context.addToken(tokenType, lexeme, literal, context.line, column)
 }
