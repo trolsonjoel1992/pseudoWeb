@@ -1,12 +1,19 @@
-import { useRef, useState } from 'react'
-import { useCodeEditorKeyboard } from '../hooks/useCodeEditorKeyboard'
+import { useEffect, useRef } from 'react'
+import Editor, { type OnMount } from '@monaco-editor/react'
+import type * as MonacoEditor from 'monaco-editor'
+import { PSEUDOWEB_LANGUAGE_ID, registerPseudoWebLanguage } from '../monaco/pseudoweb-language'
+import { PSEUDOWEB_THEME_NAME, registerPseudoWebTheme } from '../monaco/pseudoweb-theme'
+import type { ExecutionError } from '../types'
 
 type CodeEditorProps = {
   value: string
   onChange: (value: string) => void
   onExecute: () => void
   isExecuting: boolean
-  showLineNumbers?: boolean
+  fontSize: number
+  onIncreaseFontSize: () => void
+  onDecreaseFontSize: () => void
+  runtimeError: ExecutionError | null
 }
 
 export function CodeEditor({
@@ -14,24 +21,57 @@ export function CodeEditor({
   onChange,
   onExecute,
   isExecuting,
-  showLineNumbers = true,
+  fontSize,
+  onIncreaseFontSize,
+  onDecreaseFontSize,
+  runtimeError,
 }: CodeEditorProps) {
-  const lineCount = Math.max(value.split('\n').length, 1)
-  const lineNumbers = Array.from({ length: lineCount }, (_, i) => i + 1)
   const hasCode = value.trim().length > 0
-  const handleKeyDown = useCodeEditorKeyboard(value, onChange)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const lineNumbersRef = useRef<HTMLDivElement>(null)
-  const [fontSize, setFontSize] = useState<number>(15)
+  const editorRef = useRef<MonacoEditor.editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<typeof MonacoEditor | null>(null)
+  const onExecuteRef = useRef(onExecute)
 
-  const increaseFont = () => setFontSize((s) => Math.min(28, s + 1))
-  const decreaseFont = () => setFontSize((s) => Math.max(12, s - 1))
+  useEffect(() => {
+    onExecuteRef.current = onExecute
+  }, [onExecute])
 
-  const handleScroll = () => {
-    if (lineNumbersRef.current && textareaRef.current) {
-      lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop
-    }
+  const handleMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor
+    monacoRef.current = monaco
+    registerPseudoWebLanguage(monaco)
+    registerPseudoWebTheme(monaco)
+    monaco.editor.setTheme(PSEUDOWEB_THEME_NAME)
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      onExecuteRef.current()
+    })
   }
+
+  useEffect(() => {
+    const editor = editorRef.current
+    const monaco = monacoRef.current
+
+    if (!editor || !monaco) return
+
+    const model = editor.getModel()
+    if (!model) return
+
+    if (!runtimeError?.line) {
+      monaco.editor.setModelMarkers(model, PSEUDOWEB_LANGUAGE_ID, [])
+      return
+    }
+
+    monaco.editor.setModelMarkers(model, PSEUDOWEB_LANGUAGE_ID, [
+      {
+        startLineNumber: runtimeError.line,
+        endLineNumber: runtimeError.line,
+        startColumn: runtimeError.column ?? 1,
+        endColumn: 999,
+        message: runtimeError.message,
+        severity: monaco.MarkerSeverity.Error,
+      },
+    ])
+  }, [runtimeError])
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -44,7 +84,7 @@ export function CodeEditor({
           <div className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1">
             <button
               type="button"
-              onClick={decreaseFont}
+              onClick={onDecreaseFontSize}
               aria-label="Disminuir tamaño de fuente"
               className="text-sm font-bold px-2 py-1 text-slate-600 hover:text-slate-800"
             >
@@ -53,7 +93,7 @@ export function CodeEditor({
             <span className="text-[13px] font-code px-2">{fontSize}px</span>
             <button
               type="button"
-              onClick={increaseFont}
+              onClick={onIncreaseFontSize}
               aria-label="Aumentar tamaño de fuente"
               className="text-sm font-bold px-2 py-1 text-slate-600 hover:text-slate-800"
             >
@@ -76,30 +116,30 @@ export function CodeEditor({
       </div>
 
       <div
-        className="flex h-[560px] overflow-hidden rounded-xl shadow-inner xl:h-[600px] flex-nowrap"
-        style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--panel-border)' }}
+        className="flex flex-1 overflow-hidden rounded-xl shadow-inner border border-slate-200/70 bg-white flex-nowrap"
       >
-        {showLineNumbers && (
-          <div
-            ref={lineNumbersRef}
-            className="min-w-12 overflow-y-hidden px-2 py-3 text-right font-code text-[13px] leading-7"
-            style={{ borderRight: '1px solid var(--panel-border)', backgroundColor: 'color-mix(in srgb, var(--color-surface) 85%, var(--color-bg))', color: 'var(--color-muted)' }}
-          >
-            {lineNumbers.map((line) => (
-              <p key={line}>{line}</p>
-            ))}
-          </div>
-        )}
-
-        <textarea
-          ref={textareaRef}
-          className="h-full w-full resize-none overflow-x-auto px-4 py-3 font-code leading-7 outline-none transition focus:ring-2"
-          style={{ whiteSpace: 'pre', fontSize: `${fontSize}px`, backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}
+        <Editor
+          className="h-full w-full"
+          loading={<div className="flex h-full items-center justify-center text-sm text-slate-500">Cargando editor...</div>}
+          language={PSEUDOWEB_LANGUAGE_ID}
+          theme={PSEUDOWEB_THEME_NAME}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onScroll={handleScroll}
-          spellCheck={false}
+          onMount={handleMount}
+          onChange={(nextValue) => onChange(nextValue ?? '')}
+          options={{
+            fontSize,
+            fontFamily: 'JetBrains Mono, monospace',
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            lineNumbers: 'on',
+            renderLineHighlight: 'line',
+            automaticLayout: true,
+            tabSize: 2,
+            wordWrap: 'on',
+            bracketPairColorization: { enabled: true },
+            overviewRulerBorder: false,
+            smoothScrolling: true,
+          }}
           aria-label="Editor"
         />
       </div>

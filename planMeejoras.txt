@@ -1,0 +1,496 @@
+================================================================================
+PLAN DE MEJORAS — pseudoWeb
+Prioridades: Autocompletado del lenguaje + Tests de regresión
+================================================================================
+
+================================================================================
+BLOQUE A — AUTOCOMPLETADO DEL LENGUAJE
+================================================================================
+
+OBJETIVO
+--------
+Registrar un CompletionItemProvider en Monaco que ofrezca sugerencias
+contextuales usando la información que ya existe en @pseudoweb/core:
+keywords, tipos, funciones builtin e identificadores del scope actual.
+
+El resultado esperado es que al escribir las primeras letras de una palabra
+clave o función, Monaco muestre un dropdown con sugerencias, documentación
+inline y, donde aplique, snippets con placeholders.
+
+--------------------------------------------------------------------------------
+A.1 — INVENTARIO DE TOKENS AUTOCOMPLETABLES
+--------------------------------------------------------------------------------
+
+Antes de escribir código, listar qué se puede autocompletar y con qué
+prioridad visual en el dropdown de Monaco.
+
+Categorías sugeridas:
+
+  1. Palabras reservadas del lenguaje (keyword)
+     Ejemplos: si, sino, mientras, para, funcion, retornar, escribir, leer, etc.
+     Tipo Monaco: CompletionItemKind.Keyword
+     Snippet: si la keyword abre un bloque, incluir snippet con estructura.
+
+  2. Tipos del lenguaje (typeKeyword)
+     Ejemplos: entero, decimal, texto, booleano, nulo, etc.
+     Tipo Monaco: CompletionItemKind.TypeParameter
+
+  3. Funciones builtin del core
+     Ejemplos: escribir(), leer(), longitud(), etc.
+     Tipo Monaco: CompletionItemKind.Function
+     Snippet: incluir paréntesis y placeholders de parámetros.
+
+  4. Identificadores definidos por el usuario en el scope actual
+     Variables y funciones que el usuario ya declaró en el editor.
+     Tipo Monaco: CompletionItemKind.Variable / Function
+     Fuente: parseo del contenido actual del editor (ver A.3).
+
+Acción: revisar los exports de @pseudoweb/core para confirmar qué listas
+de keywords y builtins están disponibles como constantes. Si no existen
+como exports, crearlas en el core para no duplicar definiciones en la UI.
+
+--------------------------------------------------------------------------------
+A.2 — ESTRUCTURA DE ARCHIVOS NUEVOS
+--------------------------------------------------------------------------------
+
+  src/monaco/pseudoweb-completions.ts
+    Exporta: registerCompletionProvider(monaco, getEditorContent)
+    Responsabilidad: registrar el provider y construir los items estáticos
+    (keywords, tipos, builtins).
+
+  src/monaco/completion-utils.ts
+    Exporta: extractUserSymbols(code: string): Symbol[]
+    Responsabilidad: parsear el código actual del editor para extraer
+    nombres de variables y funciones declaradas por el usuario.
+    Estrategia inicial: regex simple sobre declaraciones. Puede mejorarse
+    después usando el Parser real del core.
+
+--------------------------------------------------------------------------------
+A.3 — IMPLEMENTACIÓN DEL PROVIDER
+--------------------------------------------------------------------------------
+
+Paso A.3.1 — Registrar el provider en pseudoweb-language.ts
+  Agregar al final de registerPseudoWebLanguage():
+
+    monaco.languages.registerCompletionItemProvider('pseudoweb', {
+      triggerCharacters: [],   // activar con cualquier letra
+      provideCompletionItems: (model, position) => {
+        const word = model.getWordUntilPosition(position)
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        }
+        const code = model.getValue()
+        return {
+          suggestions: buildSuggestions(monaco, range, code)
+        }
+      }
+    })
+
+Paso A.3.2 — Función buildSuggestions en pseudoweb-completions.ts
+  Construye y concatena tres listas:
+
+  a) Items estáticos de keywords:
+    KEYWORDS.map(kw => ({
+      label: kw,
+      kind: monaco.languages.CompletionItemKind.Keyword,
+      insertText: kw,
+      range,
+    }))
+
+  b) Items de funciones builtin con snippet:
+    BUILTINS.map(fn => ({
+      label: fn.name,
+      kind: monaco.languages.CompletionItemKind.Function,
+      insertText: `${fn.name}(${fn.params.map((p,i) => `\${${i+1}:${p}}`).join(', ')})`,
+      insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+      documentation: fn.description,
+      range,
+    }))
+
+  c) Items de símbolos del usuario:
+    extractUserSymbols(code).map(sym => ({
+      label: sym.name,
+      kind: sym.kind === 'function'
+        ? monaco.languages.CompletionItemKind.Function
+        : monaco.languages.CompletionItemKind.Variable,
+      insertText: sym.name,
+      detail: `definido por el usuario`,
+      range,
+    }))
+
+Paso A.3.3 — Snippets para estructuras de control
+  Para keywords que abren bloques, usar InsertAsSnippet:
+
+    { label: 'si',      insertText: 'si (${1:condicion}) {\n\t$0\n}' }
+    { label: 'mientras',insertText: 'mientras (${1:condicion}) {\n\t$0\n}' }
+    { label: 'para',    insertText: 'para ${1:i} desde ${2:0} hasta ${3:n} {\n\t$0\n}' }
+    { label: 'funcion', insertText: 'funcion ${1:nombre}(${2:params}) {\n\t$0\n}' }
+
+  Ajustar la sintaxis exacta a la gramática real del lenguaje.
+
+Paso A.3.4 — extractUserSymbols (estrategia regex inicial)
+  En completion-utils.ts, parsear el código con regex para encontrar:
+
+    // Variables: asignaciones del tipo: nombre <- valor
+    /^(\s*)([a-zA-ZáéíóúÁÉÍÓÚñÑ_]\w*)\s*<-/gm
+
+    // Funciones: declaraciones del tipo: funcion nombre(...)
+    /funcion\s+([a-zA-ZáéíóúÁÉÍÓÚñÑ_]\w*)\s*\(/gm
+
+  Devolver un array de { name, kind: 'variable' | 'function' }.
+
+  Nota: esta estrategia es frágil ante código inválido o incompleto,
+  pero es suficiente como primer paso. La mejora real es usar el Parser
+  del core para obtener el AST y extraer símbolos de forma precisa
+  (ver A.5 como mejora futura).
+
+--------------------------------------------------------------------------------
+A.4 — INTEGRACIÓN EN CodeEditor.tsx
+--------------------------------------------------------------------------------
+
+  Llamar a registerCompletionProvider en el onMount del editor, después
+  de registerPseudoWebLanguage (que ya registra el lenguaje y el theme):
+
+    import { registerCompletionProvider } from '../monaco/pseudoweb-completions'
+
+    const handleMount: OnMount = (editor, monaco) => {
+      registerPseudoWebLanguage(monaco)
+      registerCompletionProvider(monaco)
+      monaco.editor.setTheme('pseudoweb-theme')
+      // ... resto del setup
+    }
+
+  Configurar las options del editor para que el autocompletado se vea bien:
+
+    suggestOnTriggerCharacters: true,
+    quickSuggestions: true,
+    snippetSuggestions: 'inline',
+    suggest: { showKeywords: true, showFunctions: true }
+
+--------------------------------------------------------------------------------
+A.5 — MEJORA FUTURA: AUTOCOMPLETADO SEMÁNTICO CON EL PARSER
+--------------------------------------------------------------------------------
+
+  Una vez que el autocompletado básico (A.1–A.4) esté funcionando, el
+  siguiente nivel es reemplazar extractUserSymbols por una llamada real
+  al Parser de @pseudoweb/core.
+
+  Estrategia:
+  1. Parsear el contenido del editor en cada invocación del provider
+     (o con debounce para no parsear en cada keystroke).
+  2. Obtener el AST resultante.
+  3. Recorrer el AST para extraer declaraciones de variables y funciones
+     con su tipo cuando esté disponible.
+  4. Filtrar por scope si el lenguaje tiene scopes anidados.
+
+  Esto convierte el autocompletado en algo genuinamente semántico,
+  donde Monaco conoce el tipo de cada variable y puede mostrarlo
+  en el detail del suggestion item.
+
+  Este paso queda fuera del plan inmediato pero es el camino natural
+  si se quiere escalar a algo más parecido a un LSP.
+
+================================================================================
+BLOQUE B — TESTS DE REGRESIÓN
+================================================================================
+
+OBJETIVO
+--------
+Verificar que la migración a Monaco no alteró el flujo crítico del sistema:
+el string de código que el usuario escribe llega intacto a useInterpreter,
+que el interprete produce la salida correcta, y que los errores se reflejan
+correctamente en la UI.
+
+--------------------------------------------------------------------------------
+B.1 — ESTRATEGIA GENERAL DE TESTING
+--------------------------------------------------------------------------------
+
+El proyecto es una SPA React con lógica concentrada en hooks. La estrategia
+más efectiva combina:
+
+  - Unit tests para useInterpreter (lógica pura del flujo de ejecución).
+  - Integration tests para el flujo editor → ejecución → consola.
+  - No se necesitan tests E2E pesados (Playwright/Cypress) para esta etapa;
+    Vitest + Testing Library cubre el 90% del riesgo con menos overhead.
+
+Stack sugerido (compatible con Vite):
+  - vitest: test runner nativo de Vite, sin configuración extra.
+  - @testing-library/react: renderizado de componentes React en tests.
+  - @testing-library/user-event: simulación de eventos de usuario.
+  - @testing-library/jest-dom: matchers adicionales para el DOM.
+
+--------------------------------------------------------------------------------
+B.2 — INSTALACIÓN
+--------------------------------------------------------------------------------
+
+  npm install -D vitest @testing-library/react @testing-library/user-event
+                @testing-library/jest-dom jsdom
+
+  En vite.config.ts, agregar la config de test:
+
+    import { defineConfig } from 'vite'
+    import react from '@vitejs/plugin-react'
+
+    export default defineConfig({
+      plugins: [react()],
+      test: {
+        environment: 'jsdom',
+        globals: true,
+        setupFiles: ['./src/test/setup.ts'],
+      },
+      optimizeDeps: {
+        exclude: ['@monaco-editor/react'],
+      },
+    })
+
+  Crear src/test/setup.ts:
+
+    import '@testing-library/jest-dom'
+
+  Agregar script en package.json:
+
+    "test": "vitest",
+    "test:run": "vitest run"
+
+--------------------------------------------------------------------------------
+B.3 — MOCK DE MONACO EDITOR
+--------------------------------------------------------------------------------
+
+Monaco no puede renderizarse en jsdom (depende de APIs del navegador que
+jsdom no implementa). Es necesario mockearlo.
+
+Crear src/test/mocks/monaco-mock.tsx:
+
+  El mock reemplaza el componente Editor de @monaco-editor/react por un
+  textarea simple que:
+  - Acepta las mismas props (value, onChange, onMount).
+  - Llama a onChange cuando el textarea cambia.
+  - Llama a onMount con un objeto editor falso que implementa los métodos
+    que el código real usa: getValue(), getModel(), addCommand(), etc.
+
+  Ejemplo:
+
+    vi.mock('@monaco-editor/react', () => ({
+      default: ({ value, onChange, onMount }: any) => {
+        useEffect(() => {
+          if (onMount) {
+            const fakeEditor = {
+              getValue: () => value ?? '',
+              getModel: () => ({ getValue: () => value ?? '' }),
+              addCommand: vi.fn(),
+              onDidChangeModelContent: vi.fn(),
+            }
+            const fakeMonaco = {
+              KeyMod: { CtrlCmd: 0 },
+              KeyCode: { Enter: 0 },
+              editor: { setModelMarkers: vi.fn() },
+              MarkerSeverity: { Error: 8 },
+            }
+            onMount(fakeEditor, fakeMonaco)
+          }
+        }, [])
+        return (
+          <textarea
+            data-testid="monaco-editor"
+            value={value ?? ''}
+            onChange={(e) => onChange?.(e.target.value)}
+          />
+        )
+      }
+    }))
+
+  Agregar este mock en el setup global o importarlo al inicio de cada test
+  que renderice CodeEditor.
+
+--------------------------------------------------------------------------------
+B.4 — TESTS DE REGRESIÓN DEL FLUJO PRINCIPAL
+--------------------------------------------------------------------------------
+
+Archivo: src/test/interpreter-flow.test.ts
+  Tests unitarios de useInterpreter sin UI.
+
+  B.4.1 — El hook ejecuta código válido y devuelve salida
+
+    it('ejecuta código válido y devuelve líneas de salida', async () => {
+      const { result } = renderHook(() => useInterpreter())
+      await act(async () => {
+        result.current.execute('escribir("hola mundo")')
+      })
+      expect(result.current.output).toContain('hola mundo')
+      expect(result.current.executionResult?.success).toBe(true)
+    })
+
+  B.4.2 — El hook devuelve error cuando el código es inválido
+
+    it('devuelve error estructurado cuando hay error de runtime', async () => {
+      const { result } = renderHook(() => useInterpreter())
+      await act(async () => {
+        result.current.execute('escribir(variableNoDefinida)')
+      })
+      expect(result.current.executionResult?.success).toBe(false)
+      expect(result.current.executionResult?.error).toBeDefined()
+    })
+
+  B.4.3 — El hook falla explícitamente con código vacío
+
+    it('devuelve fallo con mensaje cuando el código está vacío', async () => {
+      const { result } = renderHook(() => useInterpreter())
+      await act(async () => {
+        result.current.execute('')
+      })
+      expect(result.current.executionResult?.success).toBe(false)
+    })
+
+  B.4.4 — El string llega intacto al intérprete
+
+    it('pasa el string sin modificación al lexer', async () => {
+      const code = 'variable x <- 42\nescribir(x)'
+      const { result } = renderHook(() => useInterpreter())
+      await act(async () => {
+        result.current.execute(code)
+      })
+      // Si el output contiene "42", el string llegó intacto
+      expect(result.current.output.join('')).toContain('42')
+    })
+
+Archivo: src/test/editor-flow.test.tsx
+  Tests de integración que renderizan CodeEditor y verifican que el
+  string fluye correctamente hacia App.
+
+  B.4.5 — El editor reporta cambios hacia App correctamente
+
+    it('llama a onChange con el contenido actualizado', async () => {
+      const onChange = vi.fn()
+      render(<CodeEditor value="" onChange={onChange} ... />)
+      const editor = screen.getByTestId('monaco-editor')
+      await userEvent.type(editor, 'escribir("test")')
+      expect(onChange).toHaveBeenCalledWith(expect.stringContaining('escribir'))
+    })
+
+  B.4.6 — El botón ejecutar se deshabilita con código vacío
+
+    it('deshabilita el botón ejecutar cuando no hay código', () => {
+      render(<CodeEditor value="" onChange={() => {}} isExecuting={false} ... />)
+      expect(screen.getByRole('button', { name: /ejecutar/i })).toBeDisabled()
+    })
+
+  B.4.7 — El botón ejecutar se deshabilita durante ejecución
+
+    it('deshabilita el botón ejecutar mientras isExecuting es true', () => {
+      render(<CodeEditor value="algo" onChange={() => {}} isExecuting={true} ... />)
+      expect(screen.getByRole('button', { name: /ejecutar/i })).toBeDisabled()
+    })
+
+Archivo: src/test/console-panel.test.tsx
+  Tests del panel de consola.
+
+  B.4.8 — La consola muestra líneas de salida
+
+    it('muestra las líneas de output recibidas', () => {
+      render(<ConsolePanel output={['linea 1', 'linea 2']} ... />)
+      expect(screen.getByText('linea 1')).toBeInTheDocument()
+      expect(screen.getByText('linea 2')).toBeInTheDocument()
+    })
+
+  B.4.9 — La consola muestra el error cuando hay uno
+
+    it('muestra el mensaje de error cuando existe', () => {
+      const error = { type: 'RuntimeError', message: 'variable no definida', line: 3 }
+      render(<ConsolePanel mode="errores" runtimeError={error} ... />)
+      expect(screen.getByText(/variable no definida/i)).toBeInTheDocument()
+    })
+
+  B.4.10 — El input de consola llama a submitInput al presionar Enter
+
+    it('envía el input al presionar Enter', async () => {
+      const submitInput = vi.fn()
+      render(<ConsolePanel pendingInput={true} submitInput={submitInput} ... />)
+      const input = screen.getByRole('textbox')
+      await userEvent.type(input, '42{Enter}')
+      expect(submitInput).toHaveBeenCalledWith('42')
+    })
+
+--------------------------------------------------------------------------------
+B.5 — TESTS DE REGRESIÓN POST-MONACO: CASOS ESPECÍFICOS
+--------------------------------------------------------------------------------
+
+Estos tests verifican que la migración de textarea a Monaco no introdujo
+regresiones específicas.
+
+  B.5.1 — El valor del editor no se transforma
+    El textarea original era un controlled component. Monaco también debe
+    serlo. Verificar que el value prop y el onChange son consistentes:
+
+    it('el value prop controla el contenido del editor', () => {
+      const { rerender } = render(<CodeEditor value="v1" onChange={() => {}} ... />)
+      expect(screen.getByTestId('monaco-editor')).toHaveValue('v1')
+      rerender(<CodeEditor value="v2" onChange={() => {}} ... />)
+      expect(screen.getByTestId('monaco-editor')).toHaveValue('v2')
+    })
+
+  B.5.2 — Los markers de error se aplican sin romper el render
+    Verificar que cuando useInterpreter devuelve un error con línea,
+    el componente no explota al intentar aplicar el marker:
+
+    it('no lanza error al recibir un error con línea', async () => {
+      // Renderizar CodeEditor con una función de marker falsa
+      // y verificar que el componente sigue montado después del error
+      expect(() => {
+        render(<CodeEditor value="código" errorLine={3} ... />)
+      }).not.toThrow()
+    })
+
+--------------------------------------------------------------------------------
+B.6 — ORGANIZACIÓN DE ARCHIVOS DE TEST
+--------------------------------------------------------------------------------
+
+  src/
+  └── test/
+      ├── setup.ts                    ← importa jest-dom
+      ├── mocks/
+      │   └── monaco-mock.tsx         ← mock del Editor de Monaco
+      ├── interpreter-flow.test.ts    ← tests de useInterpreter
+      ├── editor-flow.test.tsx        ← tests de CodeEditor con mock
+      ├── console-panel.test.tsx      ← tests de ConsolePanel
+      └── helpers.ts                  ← utilidades compartidas (render con providers, etc.)
+
+--------------------------------------------------------------------------------
+B.7 — ORDEN DE IMPLEMENTACIÓN
+--------------------------------------------------------------------------------
+
+  Semana 1:
+    [ ] Instalar vitest + testing-library (B.2)
+    [ ] Crear mock de Monaco (B.3)
+    [ ] Escribir e implementar tests B.4.1–B.4.4 (useInterpreter unit tests)
+    [ ] Verificar que todos pasan con `vitest run`
+
+  Semana 2:
+    [ ] Escribir tests B.4.5–B.4.10 (integración editor + consola)
+    [ ] Escribir tests B.5.1–B.5.2 (regresión post-Monaco)
+    [ ] Ajustar props y testids en componentes si los tests los requieren
+
+  Opcional (CI):
+    [ ] Agregar `vitest run` al pipeline de CI si existe
+    [ ] Configurar coverage mínimo para useInterpreter (línea crítica)
+
+================================================================================
+ORDEN GLOBAL SUGERIDO
+================================================================================
+
+  Semana 1: Tests de useInterpreter (B.4.1–B.4.4) — base segura antes de
+            tocar más código.
+  Semana 2: Tests de integración editor + consola (B.4.5–B.5.2).
+  Semana 3: Autocompletado estático: keywords + builtins (A.1–A.4).
+  Semana 4: Autocompletado de símbolos del usuario con regex (A.3.4).
+  Futuro:   Autocompletado semántico con el Parser real (A.5).
+
+La razón de poner tests primero es simple: antes de agregar features nuevas
+(autocompletado), conviene tener una red de seguridad que detecte regresiones
+en el flujo que ya funciona.
+
+================================================================================
+FIN DEL PLAN
+================================================================================

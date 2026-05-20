@@ -1,0 +1,39 @@
+Resumen actualizado — pseudoWeb web
+===================================
+
+Fecha: 2026-05-19
+
+Estado actual
+-------------
+La app web ya renderiza correctamente. La causa de la pantalla en blanco fue
+un error de Monaco al registrar el lenguaje custom `pseudoweb`. Se corrigió el
+tokenizer y la UI volvió a montarse sin romper React.
+
+Qué se cambió
+-------------
+- Se migró el editor de `textarea` a `Monaco Editor` usando `@monaco-editor/react`.
+- Se configuró `loader.config({ monaco })` en `src/main.tsx` para usar el bundle local.
+- Se creó `src/monaco/pseudoweb-language.ts` con el lenguaje custom y su tokenizer Monarch.
+- Se creó `src/monaco/pseudoweb-theme.ts` para el theme visual del editor.
+- Se agregaron markers de error en el editor para mostrar línea y columna cuando el intérprete devuelve fallos.
+- Se eliminó `src/hooks/useCodeEditorKeyboard.ts` porque Monaco ya cubre la mayor parte de esos atajos.
+- Se descartó `vite-plugin-monaco-editor` porque generó problemas de workers/resolución en este entorno.
+
+Correcciones importantes
+------------------------
+- Se agregó `literals: LITERAL_WORDS` al tokenizer para evitar el error `@literals` no definido.
+- Se simplificó la regla de símbolos para evitar la regex inválida `^+$/i` generada por Monarch.
+- El montaje de React, el `root` y el `index.html` estaban correctos; el blanco venía del error runtime del editor.
+
+Validación
+----------
+- El servidor dev de Vite responde en `http://localhost:5173`.
+- El frontend compila y sirve el archivo principal correctamente desde Vite.
+- La consola del navegador ya no muestra el error de `Monarch` relacionado con `literals` o con `+`.
+
+Notas pendientes
+----------------
+- `@pseudoweb/core` todavía tiene errores de TypeScript por imports no usados.
+- Si se quiere una experiencia más rica, el siguiente paso natural es autocompletado o providers de Monaco basados en `@pseudoweb/core`.
+
+Fin del resumen

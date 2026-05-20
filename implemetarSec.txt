@@ -1,0 +1,254 @@
+# Plan: Implementar Secuencias de Datos Elementales
+# Versión final consolidada
+
+
+## TL;DR
+
+Extender el sistema de tipos del intérprete de pseudocódigo para soportar secuencias
+tipadas (Secuencia<Tipo>) con operaciones de lectura/escritura secuencial implementadas
+como primitivas del lenguaje. Las operaciones clave son: Arrancar, Crear, Avanzar,
+Escribir, FinDeSecuencia/FDS, NoFinDeSecuencia/NFDS y Cerrar. Escribir() se mantiene
+sobrecargado para distinguir salida estándar vs escritura en secuencia.
+
+
+## Decisiones de Diseño (todas cerradas)
+
+- Tipo parametrizado: Secuencia<Tipo> (no genérico simple)
+- Sintaxis de declaración: [nombre]: Secuencia de [tipo]
+  Ejemplo: datos: Secuencia de Entero
+- Runtime usa mode: 'idle' | 'read' | 'write' | 'closed' (4 estados, no booleano)
+- Cerrar() transiciona a 'closed', no a 'idle'. Todas las operaciones validan
+  mode !== 'closed' como primera guarda.
+- Avanzar(secuencia, ventana): avanza exactamente 1 posición, asigna elements[position]
+  a la variable ventana del ambiente, luego position++. Se implementa como primitiva
+  (no built-in) para poder acceder y mutar el scope directamente.
+- position en modo write: no se usa internamente. Se mantiene en 0 durante escritura
+  y queda como información de longitud al cerrar. No hace position++ al escribir.
+- Arrancar() en MVP inicializa la secuencia en memoria (elements ya cargados por el
+  programa). Extensión a archivos/stdin queda fuera de scope.
+- FDS/NFDS y FinDeSecuencia/NoFinDeSecuencia son aliases. El parser normaliza al
+  nombre completo internamente.
+- Multidimensional (Secuencia de Secuencia de X): fuera de scope, el parser debe
+  rechazarlo explícitamente.
+
+
+## Maquina de estados de mode
+
+  [idle] --Arrancar()--> [read]
+  [idle] --Crear()-----> [write]
+  [read] --Cerrar()----> [closed]
+  [write]--Cerrar()----> [closed]
+  [closed]: ninguna operacion permitida -> SequenceClosedError
+
+  Transiciones invalidas:
+  - Arrancar() o Crear() en modo read/write/closed -> SequenceAlreadyInitialized
+  - Avanzar(), FDS(), NFDS() en modo idle/closed   -> SequenceNotInitialized / SequenceClosedError
+  - Escribir() en modo idle/read/closed             -> SequenceInvalidMode / SequenceClosedError
+
+
+## Errores tipados
+
+  SequenceAlreadyInitialized  — Arrancar/Crear sobre secuencia ya activa
+  SequenceNotInitialized      — Avanzar/FDS/NFDS sobre secuencia idle
+  SequenceInvalidMode         — Escribir fuera de modo write
+  SequenceClosedError         — Cualquier operacion sobre secuencia closed
+  SequenceEndReached          — Avanzar cuando position >= length
+  SequenceTypeMismatchError   — Tipo de elemento incompatible con elementType
+  VariableNotFound            — ventana en Avanzar no existe en el ambiente
+
+
+## Interfaz Runtime (SequenceValue.ts)
+
+  interface SequenceValue {
+    kind:        'Secuencia'
+    elementType: DataType
+    elements:    unknown[]
+    position:    number              // 0-based; solo activo en modo read
+    mode:        'idle' | 'read' | 'write' | 'closed'
+  }
+
+  Helpers:
+    isSequence(value): boolean
+    asSequence(value): SequenceValue   // lanza si no es secuencia
+
+
+## Steps
+
+### Fase 1: Extension del Sistema de Tipos
+   (Blocker para todo lo demas)
+
+1. Extender packages/core/src/parser/types/data.ts
+   - Agregar al union DataType:
+       { kind: 'Secuencia'; elementType: DataType }
+   - Verificar que el parser rechaza Secuencia de Secuencia de X (no multidimensional)
+
+2. Crear packages/core/src/interpreter/types/SequenceValue.ts
+   - Definir interfaz SequenceValue (ver seccion anterior)
+   - Implementar isSequence() y asSequence()
+   - Estado inicial al declarar: mode='idle', elements=[], position=0
+
+3. Actualizar TypeValidator y TypeChecker
+   - Agregar assertSequenceType(value, expectedElementType)
+   - Actualizar canAssign() para Secuencia<T>
+   - Actualizar resolveValueType() para retornar tipo de secuencia
+
+4. Actualizar el parser
+   - Reconocer sintaxis: [nombre]: Secuencia de [tipo]
+   - Normalizar aliases FDS->FinDeSecuencia, NFDS->NoFinDeSecuencia en el AST
+   - Rechazar tipos multidimensionales con error de parsing claro
+
+
+### Fase 2: Implementar Primitivas / Evaluadores
+   (Paralela con Fase 1)
+
+5. Crear packages/core/src/interpreter/evaluators/sequences.ts
+
+   Arrancar(secuencia):
+   - Guarda: mode !== 'closed' (sino SequenceClosedError)
+   - Guarda: mode === 'idle' (sino SequenceAlreadyInitialized)
+   - set mode = 'read', position = 0
+   - No carga datos; elements[] ya debe existir (MVP en memoria)
+
+   Crear(secuencia):
+   - Guarda: mode !== 'closed' (sino SequenceClosedError)
+   - Guarda: mode === 'idle' (sino SequenceAlreadyInitialized)
+   - set mode = 'write', elements = [], position = 0 (no se modifica durante escritura)
+
+   Avanzar(secuencia, ventana):
+   - Guarda: mode !== 'closed' (sino SequenceClosedError)
+   - Guarda: mode === 'read' (sino SequenceNotInitialized)
+   - Guarda: position < elements.length (sino SequenceEndReached)
+   - Resolver 'ventana' en el ambiente; error VariableNotFound si no existe
+   - Validar tipo compatible con elementType (sino SequenceTypeMismatchError)
+   - Asignar elements[position] a ventana en el ambiente
+   - position++
+
+   Escribir(secuencia, valor):
+   - Guarda: mode !== 'closed' (sino SequenceClosedError)
+   - Guarda: mode === 'write' (sino SequenceInvalidMode)
+   - Validar tipo de valor compatible con elementType (sino SequenceTypeMismatchError)
+   - elements.push(valor)
+   - NO modifica position
+
+   FinDeSecuencia(secuencia) / FDS(secuencia):
+   - Guarda: mode !== 'closed' (sino SequenceClosedError)
+   - Guarda: mode === 'read' (sino SequenceNotInitialized)
+   - Retorna: position >= elements.length
+
+   NoFinDeSecuencia(secuencia) / NFDS(secuencia):
+   - Identico a FDS pero retorna la negacion logica
+   - Mismas guardas, mismos errores
+
+   Cerrar(secuencia):
+   - Guarda: mode !== 'closed' (sino SequenceClosedError — ya esta cerrada)
+   - set mode = 'closed'
+   - No limpia elements[] (permite inspección post-cierre si se necesita en futuro)
+
+6. Actualizar builtins/io.ts (Escribir sobrecargado)
+   - Si primer argumento es SequenceValue: delegar a sequences.Escribir()
+   - Si no: comportamiento actual (salida a consola)
+   - Dispatch por value.kind, no por instanceof
+
+7. Registrar primitivas en el sistema de evaluadores
+   - Asegurarse que el evaluador principal reconoce los nombres de las primitivas
+     y los despacha al evaluador de secuencias antes de buscar en built-ins
+
+
+### Fase 3: Integracion con Runtime
+   (Depende de Fase 1 + 2)
+
+8. Actualizar expression evaluator
+   - Soporte para llamadas a primitivas de secuencia como expresiones
+     (FDS/NFDS retornan valor booleano usable en condiciones)
+
+9. Actualizar assignment evaluator
+   - Validar asignaciones a variables de tipo Secuencia<T>
+   - Prevenir reasignacion de variable secuencia una vez inicializada (si aplica)
+
+10. Centralizar manejo de errores de secuencia
+    - Todos los errores tipados definidos en un archivo de errores compartido
+    - Mensajes de error claros con nombre de variable y operacion involucrada
+
+
+### Fase 4: Tests
+
+11. packages/core/__tests__/sequence.test.ts
+
+    Parsing:
+    - [datos]: Secuencia de Entero parsea a { kind:'Secuencia', elementType:'Entero' }
+    - [datos]: Secuencia de Secuencia de Entero lanza error de parsing
+
+    Crear + Escribir:
+    - Crear() en idle: ok, mode='write'
+    - Escribir() 3 valores: elements tiene 3 items, position=0 (no cambia)
+    - Escribir() tipo incorrecto: SequenceTypeMismatchError
+    - Crear() en write: SequenceAlreadyInitialized
+
+    Arrancar + Avanzar + NFDS:
+    - Arrancar() en idle: ok, mode='read', position=0
+    - Arrancar() en read: SequenceAlreadyInitialized
+    - NFDS() antes de agotar: true
+    - Avanzar(sec, ventana): ventana recibe elements[0], position=1
+    - Avanzar() con ventana inexistente: VariableNotFound
+    - Avanzar() con tipo incompatible: SequenceTypeMismatchError
+    - Avanzar() en position >= length: SequenceEndReached
+    - FDS() al agotar: true; NFDS(): false
+
+    Cerrar:
+    - Cerrar() en read: mode='closed'
+    - Cerrar() en write: mode='closed'
+    - Cualquier operacion post-Cerrar(): SequenceClosedError
+    - Cerrar() sobre ya closed: SequenceClosedError
+
+    Aliases:
+    - FDS y FinDeSecuencia producen el mismo resultado
+    - NFDS y NoFinDeSecuencia producen el mismo resultado
+
+    Integracion:
+    - Programa completo: Crear -> Escribir x3 -> Cerrar -> Arrancar -> iterar con NFDS/Avanzar -> Cerrar
+
+
+### Fase 5: Documentacion
+
+12. docs/core/sequences.md
+    - Sintaxis de declaracion
+    - Tabla de operaciones con precondiciones y postcondiciones
+    - Diagrama de estados de mode
+    - Ejemplos: crear secuencia, iterar, errores comunes
+    - Nota sobre aliases FDS/NFDS
+
+13. docs/examples/secuencias_ejemplo.pseudo
+    - Programa de ejemplo end-to-end
+
+
+## Archivos a modificar / crear
+
+  NUEVO    packages/core/src/interpreter/types/SequenceValue.ts
+  NUEVO    packages/core/src/interpreter/evaluators/sequences.ts
+  NUEVO    packages/core/__tests__/sequence.test.ts
+  NUEVO    docs/core/sequences.md
+  NUEVO    docs/examples/secuencias_ejemplo.pseudo
+
+  MODIFICAR packages/core/src/parser/types/data.ts
+  MODIFICAR packages/core/src/interpreter/types/TypeValidator.ts
+  MODIFICAR packages/core/src/interpreter/builtins/io.ts
+  MODIFICAR packages/core/src/interpreter/builtins/index.ts
+  MODIFICAR packages/core/src/parser/ (sintaxis Secuencia de [tipo] + aliases)
+  MODIFICAR packages/core/src/interpreter/evaluators/ (expression + assignment)
+
+
+## Verification
+
+  1. npm test -- sequence.test.ts: todos los tests pasan
+  2. Programa de integracion end-to-end ejecuta sin errores
+  3. Errores tipados correctos en todos los casos invalidos
+  4. Parser rechaza multidimensional y acepta aliases
+  5. pseudow run secuencias_ejemplo.pseudo funciona en CLI
+
+
+## Fuera de Scope (MVP)
+
+  - Carga desde archivo o stdin en Arrancar()
+  - Secuencias multidimensionales
+  - Optimizaciones de performance (Ring Buffer, Streams)
+  - Secuencias como parametros de subprogramas definidos por el usuario

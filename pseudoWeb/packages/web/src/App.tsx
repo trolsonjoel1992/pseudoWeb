@@ -12,6 +12,7 @@ function App() {
   const [isConsoleCleared, setIsConsoleCleared] = useState(false)
   const [consoleInput, setConsoleInput] = useState('')
   const [code, setCode] = useState('')
+  const [fontSize, setFontSize] = useState(15)
   const { execute, submitInput, inputRequest, outputLines, result, isExecuting } = useInterpreter()
 
   const handleExecute = () => {
@@ -33,6 +34,14 @@ function App() {
   const handleClearConsole = () => {
     setConsoleInput('')
     setIsConsoleCleared(true)
+  }
+
+  const increaseFontSize = () => {
+    setFontSize((currentSize) => Math.min(28, currentSize + 1))
+  }
+
+  const decreaseFontSize = () => {
+    setFontSize((currentSize) => Math.max(12, currentSize - 1))
   }
 
   // Si hay error en el resultado de la ejecución, redirigir siempre a la pantalla de errores
@@ -134,15 +143,18 @@ function App() {
         </div>
 
         {/* Contenido dinámico */}
-        <section className="flex-1 overflow-auto p-4 md:p-5">
-          <div className="h-full rounded-2xl border border-slate-200/70 bg-white/70 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur md:p-5">
+        <section className="flex-1 overflow-hidden p-4 md:p-5">
+          <div className="h-full flex flex-col rounded-2xl border border-slate-200/70 bg-white/70 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur md:p-5">
             {activeMenu === 'codigo' && (
               <CodeEditor
                 value={code}
                 onChange={setCode}
                 onExecute={handleExecute}
                 isExecuting={isExecuting}
-                showLineNumbers
+                fontSize={fontSize}
+                onIncreaseFontSize={increaseFontSize}
+                onDecreaseFontSize={decreaseFontSize}
+                runtimeError={result?.error ?? null}
               />
             )}
             {activeMenu === 'consola' && (
