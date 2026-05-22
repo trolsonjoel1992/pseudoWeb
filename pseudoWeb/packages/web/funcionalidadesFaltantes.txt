@@ -1,2 +1,0 @@
-funcionalidades completas de editor de texto, como copiar, pegar, deshacer, rehacer, etc. shift + alt para seleccionar bloques de código, ctrl + shift + flechas para seleccionar palabras completas, etc. 
-la paleta de colores principal es el tema Quiet Calor 
