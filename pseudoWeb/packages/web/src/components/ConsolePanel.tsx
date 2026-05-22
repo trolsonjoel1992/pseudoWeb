@@ -3,6 +3,7 @@ import type { ExecutionError } from '../types'
 
 type ConsolePanelProps = {
   lines: string[]
+  sequences?: Record<string, { elements: unknown[]; elementType?: string | null }>
   inputValue: string
   onInputChange: (value: string) => void
   onSubmitInput: () => void
@@ -15,6 +16,7 @@ type ConsolePanelProps = {
 
 export function ConsolePanel({
   lines,
+  sequences = {},
   inputValue,
   onInputChange,
   onSubmitInput,
@@ -56,6 +58,16 @@ export function ConsolePanel({
               Reiniciar
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('sequence-output-panel')
+              if (el) el.classList.toggle('hidden')
+            }}
+            className="rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100"
+          >
+            Mostrar salida
+          </button>
           <button
             type="button"
             onClick={onClearConsole}
@@ -114,6 +126,36 @@ export function ConsolePanel({
             </span>
           </div>
         ) : null}
+
+        {/* Sequence output panel (hidden by default) */}
+        <div id="sequence-output-panel" className="mt-4 hidden">
+          {Object.keys(sequences).length === 0 ? (
+            <p className="text-slate-400">No hay secuencias generadas en esta ejecución.</p>
+          ) : (
+            <div className="space-y-2">
+                {Object.entries(sequences).map(([name, info]) => (
+                  <div key={name} className="break-words rounded-md border border-slate-700/40 bg-slate-900/20 px-3 py-2 text-sm text-slate-100">
+                    <div className="mb-1 flex items-center gap-2">
+                      <div className="text-xs text-slate-300">{name}</div>
+                      <div className="ml-1 inline-flex items-center rounded-full bg-amber-600/90 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        Secuencia{info?.elementType ? ` de ${info.elementType}` : ''}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {info.elements.map((el, i) => (
+                        <div
+                          key={i}
+                          className="min-w-0 rounded border border-slate-600/70 bg-slate-800 px-2 py-1 text-[13px] text-slate-100"
+                        >
+                          {String(el)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

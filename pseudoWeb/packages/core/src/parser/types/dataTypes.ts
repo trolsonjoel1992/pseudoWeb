@@ -13,6 +13,22 @@ export function parseDataType(state: ParserContext): DataType {
     return toDataType(token)
   }
 
+  // Secuencia de <Tipo>
+  if (state.check(TokenType.Secuencia)) {
+    // consume 'Secuencia'
+    state.advance()
+    // optionally accept the word 'de' as separator (remains Identificador)
+    if (state.check(TokenType.Identificador) && state.peek().lexeme.toLowerCase() === 'de') {
+      state.advance()
+    }
+    const elementType = parseDataType(state)
+    // reject multidimensional sequences
+    if (typeof elementType === 'object' && (elementType as any).kind === 'Secuencia') {
+      throw parserError(state, state.peek(), 'Tipos multidimensionales (Secuencia de Secuencia) no soportados')
+    }
+    return { kind: 'Secuencia', elementType }
+  }
+
   if (state.check(TokenType.Identificador) && state.peek().lexeme.toLowerCase() === 'an') {
     state.advance()
     state.consume(TokenType.ParentesisIzquierdo, ERR_EXPECTED_OPEN_PAREN_AN_TYPE)

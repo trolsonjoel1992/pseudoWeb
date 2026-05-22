@@ -5,10 +5,6 @@ import { buildMessage } from '../../constants/errorMessages.js'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import type { Environment } from '../environment/environment'
 
-/**
- * Local Errors - Dynamic type validation error messages
- * These messages require interpolation with types or contexts, so they live locally
- */
 const Errors = {
   INCOMPATIBLE_TYPE_AN: (contextLabel: string, maxLength: number) =>
     `Tipo incompatible en ${contextLabel}. Se esperaba AN(${maxLength}).`,
@@ -17,6 +13,15 @@ const Errors = {
 } as const
 
 export function resolveValueType(value: unknown): string {
+  // Sequence runtime representation
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { isSequence } = require('./SequenceValue') as { isSequence: (v: unknown) => boolean }
+    if (isSequence(value)) return 'Secuencia'
+  } catch {
+    // ignore
+  }
+
   if (typeof value === 'number') {
     return Number.isInteger(value) ? 'Entero' : 'Real'
   }
@@ -40,19 +45,9 @@ export function resolveSwitchValueType(value: unknown): 'number' | 'string' | 'b
   })
 }
 
-/**
- * Type validation and assertion logic
- * Ensures values match expected types at runtime
- */
 export class TypeValidator {
-  /**
-   * Validate that a value matches an expected type
-   * Throws RuntimeError if type mismatch
-   * @param value The value to validate
-   * @param expectedType The expected DataType
-   * @param contextLabel Description for error messages (e.g., "la variable 'x'")
-   */
   public assertValueMatchesType(value: unknown, expectedType: DataType, contextLabel: string): void {
+    // Handle AN
     if (typeof expectedType === 'object' && expectedType.kind === 'AN') {
       if (typeof value === 'string' && value.length <= expectedType.maxLength) return
       throw new RuntimeError({
@@ -61,6 +56,38 @@ export class TypeValidator {
         module: 'interpreter',
         context: { contextLabel, maxLength: expectedType.maxLength },
       })
+    }
+
+    // Handle Secuencia<T>
+    if (typeof expectedType === 'object' && expectedType.kind === 'Secuencia') {
+      // Lazy require to avoid circular deps
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { isSequence } = require('./SequenceValue') as { isSequence: (v: unknown) => boolean }
+      if (!isSequence(value)) {
+        throw new RuntimeError({
+          code: ErrorCode.RUN_TYPE_MISMATCH,
+          message: `Tipo incompatible en ${contextLabel}. Se esperaba Secuencia.`,
+          module: 'interpreter',
+          context: { contextLabel, expectedType },
+        })
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { asSequence } = require('./SequenceValue') as { asSequence: (v: unknown) => any }
+      const seq = asSequence(value)
+      const equal = dataTypeEquals(seq.elementType, expectedType.elementType)
+      if (!equal) {
+        throw new RuntimeError({
+          code: ErrorCode.RUN_TYPE_MISMATCH,
+          message: `Tipo incompatible en ${contextLabel}. Se esperaba Secuencia de ${JSON.stringify(
+            expectedType.elementType,
+          )}.`,
+          module: 'interpreter',
+          context: { contextLabel, expectedType },
+        })
+      }
+
+      return
     }
 
     switch (expectedType) {
@@ -89,13 +116,6 @@ export class TypeValidator {
     })
   }
 
-  /**
-   * Check if a value can be safely assigned to a variable of expected type
-   * Used for type validation in assignments and comparisons
-   * @param value The value being assigned
-   * @param expectedType The receiving type
-   * @returns true if assignment is safe, false otherwise
-   */
   public canAssign(value: unknown, expectedType: DataType): boolean {
     try {
       this.assertValueMatchesType(value, expectedType, 'assignment')
@@ -155,4 +175,17 @@ export class TypeValidator {
       })
     }
   }
+}
+
+function dataTypeEquals(a: DataType, b: DataType): boolean {
+  if (typeof a === 'string' && typeof b === 'string') return a === b
+  if (typeof a === 'object' && typeof b === 'object') {
+    if ((a as any).kind === 'AN' && (b as any).kind === 'AN') {
+      return (a as any).maxLength === (b as any).maxLength
+    }
+    if ((a as any).kind === 'Secuencia' && (b as any).kind === 'Secuencia') {
+      return dataTypeEquals((a as any).elementType, (b as any).elementType)
+    }
+  }
+  return false
 }

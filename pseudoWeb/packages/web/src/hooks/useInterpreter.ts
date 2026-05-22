@@ -10,6 +10,8 @@ export function useInterpreter() {
   const [isExecuting, setIsExecuting] = useState(false)
   const [result, setResult] = useState<ExecutionResult | null>(null)
   const [outputLines, setOutputLines] = useState<string[]>([])
+  type SequenceInfo = { elements: unknown[]; elementType?: string | null }
+  const [sequenceOutputs, setSequenceOutputs] = useState<Record<string, SequenceInfo>>({})
   const [inputRequest, setInputRequest] = useState<InputRequestState | null>(null)
   const inputResolverRef = useRef<((value: unknown) => void) | null>(null)
 
@@ -80,6 +82,17 @@ export function useInterpreter() {
       )
       const execution = await evaluator.evaluate(statements)
 
+      // Extract sequence variables from environment snapshot
+      const seqs: Record<string, SequenceInfo> = {}
+      for (const [k, v] of Object.entries(execution.variables)) {
+        // detect SequenceValue structure produced by core
+        if (v && typeof v === 'object' && (v as any).kind === 'Secuencia' && Array.isArray((v as any).elements)) {
+          seqs[k] = { elements: (v as any).elements, elementType: (v as any).elementType ?? null }
+        }
+      }
+
+      setSequenceOutputs(seqs)
+
       setResult({
         success: true,
         output: execution.output,
@@ -116,6 +129,7 @@ export function useInterpreter() {
     submitInput,
     inputRequest,
     outputLines,
+    sequenceOutputs,
     result,
     isExecuting,
   }

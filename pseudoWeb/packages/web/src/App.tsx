@@ -13,7 +13,7 @@ function App() {
   const [consoleInput, setConsoleInput] = useState('')
   const [code, setCode] = useState('')
   const [fontSize, setFontSize] = useState(15)
-  const { execute, submitInput, inputRequest, outputLines, result, isExecuting } = useInterpreter()
+  const { execute, submitInput, inputRequest, outputLines, result, isExecuting, sequenceOutputs } = useInterpreter()
 
   const handleExecute = () => {
     setIsConsoleCleared(false)
@@ -160,6 +160,7 @@ function App() {
             {activeMenu === 'consola' && (
               <ConsolePanel
                 lines={consoleLines}
+                sequences={sequenceOutputs}
                 inputValue={consoleInput}
                 onInputChange={setConsoleInput}
                 onSubmitInput={handleSubmitInput}

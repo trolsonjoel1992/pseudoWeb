@@ -5,6 +5,15 @@ import { handlerRegistry } from './handlerRegistry'
 import { parseVariableDeclaration, parseAssignment, parseCallStatement } from '../syntax/declarations'
 import { ERR_NO_DECLARATIONS_IN_PROCESO, ERR_INVALID_STATEMENT } from '../constants'
 
+const SEQUENCE_CALL_TOKENS = new Set<TokenType>([
+  TokenType.Crear,
+  TokenType.Arrancar,
+  TokenType.Avanzar,
+  TokenType.FinDeSecuencia,
+  TokenType.NoFinDeSecuencia,
+  TokenType.Cerrar,
+])
+
 /**
  * Enrutador principal de sentencias.
  * Determina el tipo de sentencia y delega al handler correspondiente.
@@ -12,6 +21,9 @@ import { ERR_NO_DECLARATIONS_IN_PROCESO, ERR_INVALID_STATEMENT } from '../consta
 export function parseStatement(state: ParserContext): StatementNode {
   // Intentar handlers registrados (control de flujo e I/O)
   const currentToken = state.peek()
+  if (SEQUENCE_CALL_TOKENS.has(currentToken.type as TokenType)) {
+    return parseCallStatement(state)
+  }
   if (handlerRegistry[currentToken.type as TokenType]) {
     state.advance()
     return handlerRegistry[currentToken.type as TokenType](state)

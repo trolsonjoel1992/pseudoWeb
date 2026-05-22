@@ -1,0 +1,41 @@
+Accion secuencia_char_desde_consola : ES
+Ambiente
+  c : Caracter
+  n, i : Entero
+  salida : Secuencia de Caracter
+Proceso
+  Escribir("Ingrese un caracter:")
+  Leer(c)
+  Escribir("Cuantas veces lo repito:")
+  Leer(n)
+
+  Crear(salida)
+
+  i := 1
+  Mientras i <= n Hacer
+    Escribir(salida, c)
+    i := i + 1
+  FinMientras
+
+  Cerrar(salida)
+FinAccion
+
+
+
+
+Accion secuencia_tres_caracteres : ES
+Ambiente
+  a, b, c : Caracter
+  salida : Secuencia de Caracter
+Proceso
+  Escribir("Ingrese 3 caracteres separados por Enter:")
+  Leer(a)
+  Leer(b)
+  Leer(c)
+
+  Crear(salida)
+  Escribir(salida, a)
+  Escribir(salida, b)
+  Escribir(salida, c)
+  Cerrar(salida)
+FinAccion

@@ -1,79 +1,62 @@
 # pseudoWeb
 
-Aplicación web para ejecutar pseudocódigo en tiempo real. Construida con React, TypeScript y Firebase.
+Motor e interfaz web para ejecutar pseudocódigo en tiempo real.
 
-## 📁 Estructura
+Este repositorio contiene el núcleo del lenguaje (lexer, parser, intérprete) y una aplicación web que proporciona un editor, consola y visualización de estado en tiempo de ejecución.
+
+Estado actual
+- Rama activa: `clean-docs-only` (trabajo en documentación y mejoras)
+- Implementaciones destacadas: soporte para `Secuencia<T>` (primitivas: `Crear`, `Arrancar`, `Avanzar`, `Escribir`, `FinDeSecuencia`/`FDS`, `NoFinDeSecuencia`/`NFDS`, `Cerrar`).
+- Tests del paquete `core`: 50 tests — todos pasan.
+
+Estructura del repositorio
 
 ```
 pseudoWeb/
 ├── packages/
-│   ├── core/      # Motor del lenguaje (Lexer, Parser, Interpreter)
-│   └── web/       # Aplicación React
-├── firebase.json  # Configuración Firebase
+│   ├── core/      # Motor del lenguaje (Lexer, Parser, Interpreter, tests)
+│   └── web/       # Aplicación React (editor, UI)
+├── docs/          # Documentación y ejemplos (ej. docs/core/sequences.md)
+├── firebase.json
 └── README.md      # Este archivo
 ```
 
-## 🚀 Inicio Rápido
-
-### Requisitos
-- Node.js v18+
+Requisitos
+- Node.js v18+ (use la versión indicada en `.nvmrc` si aplica)
 - pnpm
 
-Recomendado:
-- Usar la versión de Node indicada en `.nvmrc`.
-
-### Instalación
+Instalación y desarrollo
 
 ```bash
-# (Opcional) cargar versión de Node recomendada
-nvm use
+# Instalar dependencias en el workspace
+pnpm install
 
-# Instalar dependencias
-pnpm setup
+# Ejecutar la app web en desarrollo (filtrar por paquete web)
+pnpm --filter @pseudoweb/web dev
 
-# Desarrollo
-pnpm dev
+# Ejecutar solo los tests del motor (core)
+pnpm --filter @pseudoweb/core test
 
-# Build
-pnpm build
-
-# Verificación de tipos
-pnpm typecheck
+# Compilar todo
+pnpm -r build
 ```
 
-## Recuperación rápida local
+Comandos útiles
+- `pnpm --filter @pseudoweb/core test` — ejecutar pruebas unitarias del motor.
+- `pnpm --filter @pseudoweb/web dev` — iniciar la aplicación web en modo desarrollo.
+- `pnpm -r build` — compilar todos los paquetes.
 
-Si eliminaste `node_modules` o cambiaste dependencias:
+Documentación y ejemplos
+- Guía de secuencias: [docs/core/sequences.md](docs/core/sequences.md)
+- Ejemplo funcional: [docs/examples/secuencias_ejemplo.pseudo](docs/examples/secuencias_ejemplo.pseudo)
 
-```bash
-pnpm clean:deps
-pnpm setup
-pnpm dev
-```
+Contribución
+- Abra un issue describiendo el cambio propuesto antes de implementar cambios importantes.
+- Cree ramas temáticas por característica o corrección y abra un Pull Request hacia `main`.
+- Mantenga las pruebas verdes y añada pruebas unitarias para nuevas funcionalidades.
 
-## 📦 Packages
+Contacto
+- Autor: trolsonjoel1992
 
-### `packages/core`
-Motor del lenguaje pseudocódigo:
-- **Lexer**: Tokenización
-- **Parser**: Análisis sintáctico
-- **Interpreter**: Ejecución
-
-### `packages/web`
-Aplicación React:
-- Editor de código
-- Consola de salida
-- Visualizador de variables
-- Integración con Firebase
-
-## 🔧 Herramientas
-
-- React 18
-- TypeScript
-- Vite
-- Firebase
-- pnpm workspaces
-
-## 📝 Licencia
-
-MIT
+Licencia
+- MIT

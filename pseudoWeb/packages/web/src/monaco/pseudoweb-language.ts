@@ -5,9 +5,9 @@ export const PSEUDOWEB_LANGUAGE_ID = 'pseudoweb'
 
 const LITERAL_WORDS = ['verdadero', 'falso']
 const KEYWORD_WORDS = Object.keys(KEYWORDS).filter(
-  (word) => !LITERAL_WORDS.includes(word) && !['y', 'o', 'no'].includes(word)
+  (word) => !LITERAL_WORDS.includes(word) && !['y', 'o', 'no', 'secuencia'].includes(word)
 )
-const TYPE_KEYWORDS = ['entero', 'real', 'caracter', 'alfanumerico', 'logico']
+const TYPE_KEYWORDS = ['entero', 'real', 'caracter', 'alfanumerico', 'logico', 'secuencia']
 const OPERATOR_WORDS = ['div', 'mod', 'y', 'o', 'no']
 
 let isLanguageRegistered = false

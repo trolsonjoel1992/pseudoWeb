@@ -21,6 +21,7 @@ import { BuiltinRegistry, initBuiltins } from '../builtins/index'
 import { CallableInvoker } from '../callables/callableInvoker'
 import { CallableResolver } from '../callables/callableResolver'
 import { evaluateExpressionNode } from '../evaluators/expressionEvaluator'
+import { isSequencePrimitive, evaluateSequenceProcedure } from '../evaluators/sequences'
 import { StatementDispatcher } from './statementDispatcher'
 
 export interface EvaluationResult {
@@ -157,11 +158,16 @@ export class Evaluator {
   }
 
   private async evaluateCallStatement(node: CallStatementNode): Promise<void> {
+    // Intercept sequence primitives and dispatch directly (they may need raw AST args)
+    if (isSequencePrimitive(node.call.name)) {
+      await evaluateSequenceProcedure(node.call.name, node.call.arguments, this.context as any)
+      return
+    }
+
     const args: unknown[] = []
     for (const arg of node.call.arguments) {
       args.push(await this.evaluateExpression(arg))
     }
-
     if (this.registry.isProcedure(node.call.name)) {
       await this.invoker.invokeProcedure(node.call.name, args)
       return

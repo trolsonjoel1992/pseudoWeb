@@ -1,0 +1,367 @@
+# Plan: Carga de Secuencias desde Archivo
+# Flujo de pre-carga estatica con deteccion via AST
+
+
+## Contexto y decision de diseño
+
+  El interprete es async. Eso habilitaria pausar en runtime cuando aparece
+  Arrancar(). Sin embargo, se elige el modelo de pre-carga estatica por
+  las siguientes razones:
+
+  - El usuario educativo debe preparar sus datos antes de ejecutar, no
+    durante. Pausar a mitad de ejecucion es confuso en ese contexto.
+  - El orden de carga lo define el bloque Ambiente, que es estatico y
+    predecible. No depende de condicionales ni del flujo de ejecucion.
+  - Arrancar() no necesita ningun mecanismo de comunicacion con la UI
+    durante la ejecucion: los datos ya estan en elements[] cuando el
+    interprete arranca.
+  - El evaluador no requiere cambios estructurales: solo Arrancar() cambia
+    su comportamiento (valida que elements[] ya este poblado en lugar de
+    pedirlo).
+
+  Modelo descartado: dinamico (pausar en Arrancar() y esperar UI).
+  Razon: impredecible con condicionales, confuso para usuarios educativos.
+
+
+## Flujo completo de ejecucion (post-implementacion)
+
+  1. Usuario escribe pseudocodigo en el editor.
+  2. Usuario presiona "Ejecutar".
+  3. El sistema corre un visitor sobre el AST del ultimo parse exitoso.
+  4. El visitor detecta variables Secuencia en el bloque Ambiente y
+     clasifica cada una como entrada (usa Arrancar) o salida (usa Crear).
+  5. Si hay secuencias de entrada:
+       - La consola muestra un formulario de carga.
+       - Una fila por secuencia, en el orden del bloque Ambiente.
+       - Cada fila muestra: nombre de variable, tipo esperado, y zona
+         de carga (drag & drop + boton "Cargar archivo").
+       - Al cargar cada archivo se valida el formato y se muestra preview
+         (ej: "12 elementos cargados - tipo Entero OK").
+       - El boton "Ejecutar" permanece deshabilitado hasta que todas las
+         secuencias de entrada tengan archivo cargado.
+  6. El usuario completa la carga. Se habilita "Ejecutar".
+  7. El interprete corre con elements[] ya poblados en cada SequenceValue.
+     Arrancar() solo valida y cambia mode a 'read'.
+  8. Si hay secuencias de salida, al terminar la ejecucion la consola
+     muestra un boton "Descargar [nombre]" por cada una.
+
+
+## Clasificacion de secuencias: entrada vs salida
+
+  Heuristica via analisis estatico del AST (cubre 95% de casos educativos):
+  - Secuencia de entrada: variable de tipo Secuencia que aparece como
+    primer argumento de una llamada a Arrancar() en el cuerpo del programa.
+  - Secuencia de salida: variable de tipo Secuencia que aparece como
+    primer argumento de una llamada a Crear() en el cuerpo del programa.
+  - Si una variable no aparece en ninguna de las dos: advertir en consola
+    que la secuencia esta declarada pero nunca inicializada.
+  - Si aparece en ambas (Arrancar y Crear): tratar como entrada. Caso
+    probablemente invalido en runtime, pero no bloqueante en el analisis.
+
+  Limitacion conocida y aceptada: si Arrancar() esta dentro de un Si,
+  la secuencia se pide igualmente aunque la rama no se ejecute. Para
+  uso educativo esto es aceptable y preferible a la alternativa dinamica.
+
+
+## Steps
+
+
+### Fase 1: Visitor de analisis estatico de secuencias
+   (Blocker para todo lo demas)
+
+  1a. Crear packages/core/src/analysis/sequenceAnalyzer.ts
+
+      Exportar funcion:
+        analyzeSequences(ast: ProgramAST): SequenceAnalysisResult
+
+      Donde SequenceAnalysisResult es:
+        {
+          input:  SequenceInfo[]   // secuencias que usan Arrancar
+          output: SequenceInfo[]   // secuencias que usan Crear
+          unused: SequenceInfo[]   // declaradas pero sin Arrancar ni Crear
+        }
+
+      Donde SequenceInfo es:
+        {
+          name:        string       // nombre de la variable
+          elementType: DataType     // tipo del elemento (Entero, Real, etc.)
+          order:       number       // posicion en el bloque Ambiente (0-based)
+        }
+
+      Logica del visitor:
+        - Recorrer el bloque Ambiente y recolectar todas las variables
+          cuyo tipo sea { kind: 'Secuencia' }.
+        - Recorrer el cuerpo del programa buscando CallStatement /
+          CallExpression con nombre 'Arrancar' o 'Crear'.
+        - Cruzar por nombre de variable para clasificar.
+        - Preservar el orden segun aparicion en Ambiente.
+
+  1b. Crear packages/core/src/analysis/index.ts
+      - Reexportar analyzeSequences y los tipos.
+
+  1c. Tests unitarios: packages/core/__tests__/sequenceAnalyzer.test.ts
+      - Programa sin secuencias: resultado vacio en los tres arrays.
+      - Programa con una secuencia de entrada: aparece en input[].
+      - Programa con una secuencia de salida: aparece en output[].
+      - Programa con ambas: clasificacion correcta.
+      - Secuencia declarada pero sin Arrancar ni Crear: aparece en unused[].
+      - Arrancar dentro de Si: igual aparece en input[].
+      - Orden correcto segun Ambiente cuando hay multiples secuencias.
+
+
+### Fase 2: Cambio en Arrancar() del interprete
+   (Depende de Fase 1 — cambia comportamiento de la primitiva)
+
+  2a. Modificar packages/core/src/interpreter/evaluators/sequences.ts
+
+      Comportamiento actual de Arrancar(secuencia):
+        - Valida mode === 'idle'
+        - set mode = 'read', position = 0
+        - No carga datos (elements[] vacio)
+
+      Comportamiento nuevo de Arrancar(secuencia):
+        - Valida mode === 'idle' (sino SequenceAlreadyInitialized)
+        - Valida elements.length > 0 (sino SequenceNoDataLoaded — error nuevo)
+        - set mode = 'read', position = 0
+
+      La validacion elements.length > 0 garantiza que el interprete no
+      puede correr si el usuario se salto la carga del archivo.
+
+  2b. Agregar error nuevo: SequenceNoDataLoaded
+      - Mensaje claro: "[nombre]: la secuencia no tiene datos cargados.
+        Cargue un archivo antes de ejecutar."
+      - Agregar a la tabla de ErrorCodes del proyecto.
+
+  2c. Actualizar tests en sequence.test.ts
+      - Arrancar() con elements[] vacio: SequenceNoDataLoaded.
+      - Arrancar() con elements[] poblado: ok, mode='read'.
+
+
+### Fase 3: Parser de archivos de secuencia
+   (Independiente de Fase 1 y 2 — puede desarrollarse en paralelo)
+
+  Formato de archivo: texto plano, un valor por linea, sin headers.
+  Ejemplo para Secuencia de Entero:
+    42
+    17
+    8
+    103
+
+  3a. Crear packages/core/src/io/sequenceFileParser.ts
+
+      Exportar funcion:
+        parseSequenceFile(
+          content: string,
+          elementType: DataType
+        ): SequenceParseResult
+
+      Donde SequenceParseResult es:
+        {
+          success:  boolean
+          elements: unknown[]         // poblado si success === true
+          errors:   ParseLineError[]  // poblado si hay errores
+        }
+
+      Donde ParseLineError es:
+        {
+          line:     number
+          raw:      string    // valor original que fallo
+          expected: string    // descripcion del tipo esperado
+        }
+
+      Reglas de parsing por tipo:
+        Entero:       parseInt, rechazar si NaN o tiene punto decimal
+        Real:         parseFloat, rechazar si NaN
+        Logico:       aceptar 'verdadero'/'falso' case-insensitive
+        Caracter:     aceptar exactamente 1 caracter
+        Alfanumerico: aceptar cualquier string no vacio
+
+      Reglas generales:
+        - Ignorar lineas vacias y lineas que sean solo espacios.
+        - Trim de cada linea antes de parsear.
+        - Si hay al menos un error, success = false y elements = [].
+        - Reportar TODOS los errores, no solo el primero.
+
+  3b. Crear packages/core/src/io/index.ts
+      - Reexportar parseSequenceFile y tipos.
+
+  3c. Tests unitarios: packages/core/__tests__/sequenceFileParser.test.ts
+      - Archivo valido de Entero: elements correctos.
+      - Archivo valido de Real: elements correctos.
+      - Archivo valido de Logico: verdadero/Verdadero/VERDADERO todos ok.
+      - Archivo valido de Caracter: ok con 1 char por linea.
+      - Lineas vacias intercaladas: ignoradas correctamente.
+      - Valor incorrecto en linea 3: error con line=3 y raw correcto.
+      - Multiples errores: todos reportados.
+      - Archivo completamente vacio: elements=[], sin errores (secuencia vacia valida).
+      - String de multiples chars en Secuencia de Caracter: error.
+
+
+### Fase 4: Componente de UI en la consola
+   (Depende de Fase 1 y Fase 3)
+
+  El componente vive en la consola, no en el editor. Se activa despues
+  de que el usuario presiona "Ejecutar" y el analisis estatico detecta
+  secuencias de entrada.
+
+  4a. Crear el componente SequenceLoader
+
+      Estado interno:
+        - Por cada secuencia de entrada: { info: SequenceInfo, file: File | null,
+          parseResult: SequenceParseResult | null, status: 'pending'|'ok'|'error' }
+        - allLoaded: boolean (true cuando todas tienen status 'ok')
+
+      Render por cada secuencia:
+        [ Nombre: datos ] [ Tipo: Entero ] [ Estado: pendiente / 12 elementos / ERROR ]
+        [ Zona drag & drop                                              ]
+        [ Boton "Cargar archivo"                                        ]
+        [ Si hay error: lista de errores con numero de linea            ]
+
+      Comportamiento:
+        - Al soltar o seleccionar archivo: leer contenido, llamar
+          parseSequenceFile, actualizar estado de esa fila.
+        - Si parse ok: mostrar "N elementos cargados" en verde.
+        - Si parse error: mostrar errores con numero de linea en rojo.
+          Permitir reemplazar el archivo sin recargar.
+        - Cuando todas las filas tienen status 'ok': emitir evento
+          onAllLoaded(loadedSequences: LoadedSequence[]) donde
+          LoadedSequence = { name: string, elements: unknown[] }.
+
+  4b. Integracion en el orquestador de ejecucion
+
+      Flujo en el componente padre (consola / runner):
+
+        async function handleEjecutar() {
+          const analysis = analyzeSequences(ast)
+
+          if (analysis.input.length === 0) {
+            // sin secuencias de entrada: ejecutar directo
+            await runInterpreter(ast, {})
+            return
+          }
+
+          // mostrar SequenceLoader y esperar carga
+          showSequenceLoader(analysis.input, async (loaded) => {
+            // poblar elements[] en el runtime antes de ejecutar
+            const preloadedData = buildPreloadMap(loaded)
+            await runInterpreter(ast, preloadedData)
+            handleOutputSequences(analysis.output)
+          })
+        }
+
+  4c. Modificar runInterpreter para recibir preloadedData
+
+      runInterpreter(ast, preloadedData: Record<string, unknown[]>)
+
+      Antes de ejecutar el programa, el runner recorre preloadedData
+      y por cada entrada busca la variable en el ambiente del interprete
+      y puebla su elements[]. Arrancar() despues solo valida y cambia mode.
+
+  4d. Manejo de secuencias de salida post-ejecucion
+
+      Despues de que el interprete termina:
+        - Para cada secuencia en analysis.output: leer su SequenceValue
+          del ambiente del interprete.
+        - Si mode === 'closed' y elements.length > 0: mostrar boton
+          "Descargar [nombre].sec".
+        - El archivo descargado es texto plano, un elemento por linea
+          (mismo formato que la entrada, para que pueda usarse como
+          entrada de otro programa).
+
+  4e. Advertencias de secuencias no utilizadas
+
+      Si analysis.unused.length > 0: mostrar en consola advertencia
+      (no error): "[nombre] esta declarada como Secuencia pero nunca
+      se inicializa con Arrancar() ni Crear()."
+
+
+### Fase 5: Tests de integracion end-to-end
+   (Depende de todas las fases anteriores)
+
+  5a. Test: programa con una secuencia de entrada
+      - Analisis detecta 1 secuencia de entrada.
+      - Parser de archivo produce elements correctos.
+      - Interprete corre y itera la secuencia sin errores.
+
+  5b. Test: programa con dos secuencias de entrada
+      - Ambas aparecen en el loader en el orden del Ambiente.
+      - Cada una acepta su propio archivo.
+      - Ejecutar se habilita solo cuando las dos estan cargadas.
+
+  5c. Test: programa con secuencia de entrada y de salida
+      - Carga correcta de entrada.
+      - Post-ejecucion: boton de descarga aparece para la de salida.
+      - Archivo descargado tiene el formato correcto.
+
+  5d. Test: archivo con errores de formato
+      - Parser reporta errores con numero de linea.
+      - Ejecutar permanece deshabilitado.
+      - El usuario puede reemplazar el archivo y reintentar.
+
+  5e. Test: Arrancar() sin datos pre-cargados
+      - Si por algun motivo elements[] esta vacio al llegar a Arrancar():
+        SequenceNoDataLoaded con mensaje claro.
+
+
+## Archivos a crear / modificar
+
+  NUEVO    packages/core/src/analysis/sequenceAnalyzer.ts
+  NUEVO    packages/core/src/analysis/index.ts
+  NUEVO    packages/core/src/io/sequenceFileParser.ts
+  NUEVO    packages/core/src/io/index.ts
+  NUEVO    packages/core/__tests__/sequenceAnalyzer.test.ts
+  NUEVO    packages/core/__tests__/sequenceFileParser.test.ts
+  NUEVO    [UI] componente SequenceLoader (ruta segun estructura del frontend)
+
+  MODIFICAR packages/core/src/interpreter/evaluators/sequences.ts
+            — Arrancar() valida elements.length > 0
+  MODIFICAR packages/core/__tests__/sequence.test.ts
+            — agregar casos de SequenceNoDataLoaded
+  MODIFICAR [UI] componente consola / runner
+            — integrar analyzeSequences, SequenceLoader y preloadedData
+  MODIFICAR [UI] componente boton Ejecutar
+            — logica de habilitacion segun estado del loader
+
+  SIN CAMBIOS:
+    — El interprete en su estructura general
+    — El parser y el lexer
+    — Los evaluadores existentes salvo Arrancar()
+    — El bloque Ambiente y su parseado
+
+
+## Errores nuevos
+
+  SequenceNoDataLoaded
+    Cuando: Arrancar() con elements[] vacio
+    Mensaje: "[nombre]: la secuencia no tiene datos cargados.
+              Cargue un archivo antes de ejecutar."
+
+  (Los errores existentes de secuencia no cambian)
+
+
+## Verification
+
+  Core:
+    1. npm test: todos los tests existentes siguen pasando
+    2. sequenceAnalyzer.test.ts: todos los casos pasan
+    3. sequenceFileParser.test.ts: todos los casos pasan
+    4. sequence.test.ts: casos nuevos de SequenceNoDataLoaded pasan
+
+  UI / integracion:
+    5. Programa sin secuencias: Ejecutar funciona directamente, sin loader
+    6. Programa con 1 secuencia de entrada: loader aparece con 1 fila,
+       Ejecutar deshabilitado hasta cargar
+    7. Programa con 2 secuencias: loader con 2 filas, orden correcto
+    8. Archivo con errores: errores con numero de linea, Ejecutar bloqueado
+    9. Secuencia de salida: boton Descargar aparece post-ejecucion
+   10. Archivo descargado puede usarse como entrada en otra ejecucion
+
+
+## Fuera de scope
+
+  - Carga desde URL o path del servidor
+  - Validacion semantica del archivo (valores fuera de rango logico)
+  - Secuencias de entrada/salida simultaneas en la misma variable
+  - Formato de archivo binario o CSV con headers
+  - Preview de los elementos cargados mas alla del conteo
+  - Historial de archivos cargados anteriormente

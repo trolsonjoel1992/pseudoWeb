@@ -128,7 +128,8 @@ export function CodeEditor({
           onChange={(nextValue) => onChange(nextValue ?? '')}
           options={{
             fontSize,
-            fontFamily: 'JetBrains Mono, monospace',
+            fontFamily: 'Cascadia Code, Consolas, monospace',
+            fontLigatures: false,
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
             lineNumbers: 'on',

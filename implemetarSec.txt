@@ -252,3 +252,271 @@ sobrecargado para distinguir salida estándar vs escritura en secuencia.
   - Secuencias multidimensionales
   - Optimizaciones de performance (Ring Buffer, Streams)
   - Secuencias como parametros de subprogramas definidos por el usuario
+
+
+
+
+
+  NUEVOPLAN
+  # Plan: Implementar Secuencias de Datos Elementales
+# Version final — incorpora informe de implementacion parcial
+
+
+## Estado actual (base de este plan)
+
+  Las Fases 1 a 5 del plan original fueron implementadas y los 50 tests
+  del paquete core pasan. Lo que este plan describe es:
+
+  1. Una tarea pendiente de infraestructura: registrar las keywords de
+     secuencia en el lexer para habilitar resaltado de sintaxis en el editor.
+  2. Tareas de cierre: documentacion completa y tests adicionales para el
+     patron funcional de Avanzar que surgio durante la implementacion.
+  3. Referencia completa del diseño para quien trabaje en el codigo en el futuro.
+
+
+## Decisiones de Diseño (cerradas)
+
+  - Tipo parametrizado: Secuencia<Tipo> (no generico simple)
+  - Sintaxis de declaracion: [nombre]: Secuencia de [tipo]
+    Ejemplo: datos: Secuencia de Entero
+  - Runtime usa mode: 'idle' | 'read' | 'write' | 'closed' (4 estados)
+  - Cerrar() transiciona a 'closed'. Todas las operaciones validan
+    mode !== 'closed' como primera guarda.
+  - Avanzar soporta dos formas:
+      Procedural: Avanzar(secuencia, ventana) — asigna a variable del ambiente
+      Funcional:  valor := Avanzar(secuencia) — retorna el elemento como valor
+  - position en modo write: se mantiene en 0, no se modifica al escribir.
+  - Arrancar() inicializa en memoria (MVP). Archivos/stdin fuera de scope.
+  - FDS/NFDS son aliases de FinDeSecuencia/NoFinDeSecuencia.
+    Resolucion: el lexer los normaliza al token canonico via KEYWORDS.
+  - 'de' NO es keyword: llega como Identificador y el parser lo consume
+    contextualmente. Esto evita romper variables llamadas 'de'.
+  - Multidimensional (Secuencia de Secuencia de X): rechazado por el parser.
+  - secuencia, arrancar, crear, avanzar, findesecuencia, nofindesecuencia,
+    cerrar SI son keywords reservadas (ver Fase 0 abajo).
+
+
+## Maquina de estados de mode
+
+  [idle] --Arrancar()--> [read]
+  [idle] --Crear()-----> [write]
+  [read] --Cerrar()----> [closed]
+  [write]--Cerrar()----> [closed]
+  [closed]: ninguna operacion permitida -> SequenceClosedError
+
+  Transiciones invalidas:
+  - Arrancar() o Crear() en modo read/write/closed -> SequenceAlreadyInitialized
+  - Avanzar(), FDS(), NFDS() en modo idle/closed   -> SequenceNotInitialized / SequenceClosedError
+  - Escribir() en modo idle/read/closed             -> SequenceInvalidMode / SequenceClosedError
+
+
+## Errores tipados
+
+  SequenceAlreadyInitialized  — Arrancar/Crear sobre secuencia ya activa
+  SequenceNotInitialized      — Avanzar/FDS/NFDS sobre secuencia idle
+  SequenceInvalidMode         — Escribir fuera de modo write
+  SequenceClosedError         — Cualquier operacion sobre secuencia closed
+  SequenceEndReached          — Avanzar cuando position >= length
+  SequenceTypeMismatchError   — Tipo de elemento incompatible con elementType
+  VariableNotFound            — ventana en Avanzar procedural no existe en el ambiente
+
+
+## Interfaz Runtime (SequenceValue.ts) — ya implementada
+
+  interface SequenceValue {
+    kind:        'Secuencia'
+    elementType: DataType
+    elements:    unknown[]
+    position:    number              // 0-based; activo en modo read
+    mode:        'idle' | 'read' | 'write' | 'closed'
+  }
+
+  Helpers exportados:
+    isSequence(value): boolean
+    asSequence(value): SequenceValue      // lanza si no es secuencia
+    createInitialSequence(elementType): SequenceValue
+
+
+## Steps
+
+
+### Fase 0: Lexer — Registrar keywords para resaltado de sintaxis
+   (PENDIENTE — afecta directamente el editor)
+
+  Por que: el editor usa el lexer para resaltado de sintaxis. Sin este
+  cambio, palabras como Secuencia, Arrancar, Crear, etc. se muestran
+  como identificadores comunes y no reciben resaltado.
+
+  Por que no se hizo antes: la implementacion parcial funciono sin esto
+  porque el parser comparaba lexemes directamente. Es funcional pero
+  incompleto para la experiencia del editor.
+
+  0a. Modificar packages/core/src/lexer/types/tokenType.ts
+
+      Agregar al enum TokenType:
+        Secuencia
+        Arrancar
+        Crear
+        Avanzar
+        FinDeSecuencia
+        NoFinDeSecuencia
+        Cerrar
+
+      NO agregar: FDS, NFDS (se resuelven como aliases en KEYWORDS)
+      NO agregar: 'de' (llega como Identificador, el parser lo consume contextualmente)
+
+  0b. Modificar packages/core/src/lexer/types/tokenRules.ts
+
+      Agregar al mapa KEYWORDS (en minusculas, igual que el resto del mapa):
+        "secuencia"        -> TokenType.Secuencia
+        "arrancar"         -> TokenType.Arrancar
+        "crear"            -> TokenType.Crear
+        "avanzar"          -> TokenType.Avanzar
+        "findesecuencia"   -> TokenType.FinDeSecuencia
+        "fds"              -> TokenType.FinDeSecuencia        <- alias canonico
+        "nofindesecuencia" -> TokenType.NoFinDeSecuencia
+        "nfds"             -> TokenType.NoFinDeSecuencia      <- alias canonico
+        "cerrar"           -> TokenType.Cerrar
+
+      Con esto, FDS y NFDS nunca llegan al parser como Identificador.
+      identifierScanner no necesita cambios: consume alfanumericos y
+      luego llama a resolveIdentifierType, que ya consulta KEYWORDS.
+
+  0c. Actualizar el parser para usar los nuevos TokenTypes
+
+      Donde hoy se compara:
+        state.check(TokenType.Identificador) && lexeme === 'secuencia'
+      Reemplazar por:
+        state.check(TokenType.Secuencia)
+
+      Aplicar lo mismo para Arrancar, Crear, Avanzar, FinDeSecuencia,
+      NoFinDeSecuencia y Cerrar en declarations.ts y donde corresponda.
+
+      ATENCION: verificar que la normalizacion de aliases FDS/NFDS que
+      hoy se hace en el parser (declarations.ts) puede eliminarse, ya que
+      el lexer ahora entrega el token canonico directamente.
+
+  0d. Riesgo a verificar despues del cambio
+
+      'crear' y 'cerrar' son palabras comunes. Correr todos los tests
+      existentes (npm test) para detectar si algun test usa estas palabras
+      como nombres de variable. Si hay colisiones, actualizar esos tests.
+
+  Archivos del lexer que NO necesitan cambios:
+    - lexer.ts, lexerState.ts, lexerContext.ts
+    - numberScanner.ts, stringScanner.ts, operatorScanner.ts, commentScanner.ts
+    - charUtils.ts
+
+
+### Fase 1: Documentacion — Completar contenido pendiente
+   (PENDIENTE)
+
+  El informe de implementacion identifica dos gaps en la documentacion
+  existente en docs/core/sequences.md:
+
+  1a. Documentar ErrorCodes de secuencias
+
+      Agregar tabla en docs/core/sequences.md con:
+        - Nombre del error
+        - ErrorCode asociado (RuntimeError con ErrorCode.*)
+        - Operacion que lo lanza
+        - Condicion exacta que lo dispara
+        - Mensaje de error esperado
+
+  1b. Documentar patron funcional de Avanzar
+
+      La implementacion soporta dos formas que la documentacion actual
+      no cubre:
+
+      Procedural (modifica ambiente):
+        Avanzar(miSecuencia, ventana)
+        — asigna elements[position] a la variable 'ventana'
+        — avanza position++
+        — no retorna valor
+
+      Funcional (retorna valor):
+        valor := Avanzar(miSecuencia)
+        — retorna elements[position]
+        — avanza position++
+        — util cuando se quiere asignar y operar en la misma expresion
+
+      Agregar ambos patrones con ejemplos en docs/core/sequences.md
+      y en docs/examples/secuencias_ejemplo.pseudo.
+
+
+### Fase 2: Tests — Cubrir patron funcional de Avanzar
+   (PENDIENTE)
+
+  Los tests actuales cubren el patron procedural. Agregar en
+  packages/core/__tests__/sequence.test.ts:
+
+  Avanzar funcional:
+    - valor := Avanzar(sec): retorna elements[0], position=1
+    - Avanzar(sec) en position >= length: SequenceEndReached
+    - Avanzar(sec) en modo idle: SequenceNotInitialized
+    - Avanzar(sec) en modo closed: SequenceClosedError
+    - Avanzar(sec) con tipo mismatch: SequenceTypeMismatchError
+
+  Lexer (agregar despues de completar Fase 0):
+    - 'secuencia' tokeniza como TokenType.Secuencia (no Identificador)
+    - 'fds' tokeniza como TokenType.FinDeSecuencia
+    - 'nfds' tokeniza como TokenType.NoFinDeSecuencia
+    - 'crear' tokeniza como TokenType.Crear
+    - 'de' tokeniza como TokenType.Identificador (no reservada)
+
+
+## Archivos a modificar
+
+  PENDIENTE — Fase 0:
+    MODIFICAR packages/core/src/lexer/types/tokenType.ts
+    MODIFICAR packages/core/src/lexer/types/tokenRules.ts
+    MODIFICAR packages/core/src/parser/syntax/declarations.ts
+      (reemplazar comparacion de lexemes por TokenTypes,
+       evaluar si normalizacion de aliases puede eliminarse)
+
+  PENDIENTE — Fase 1:
+    MODIFICAR docs/core/sequences.md
+    MODIFICAR docs/examples/secuencias_ejemplo.pseudo
+
+  PENDIENTE — Fase 2:
+    MODIFICAR packages/core/__tests__/sequence.test.ts
+
+  YA IMPLEMENTADOS (no tocar salvo regresion):
+    packages/core/src/parser/types/data.ts
+    packages/core/src/parser/types/dataTypes.ts
+    packages/core/src/interpreter/types/SequenceValue.ts
+    packages/core/src/interpreter/types/typeValidator.ts
+    packages/core/src/interpreter/evaluators/sequences.ts
+    packages/core/src/interpreter/evaluators/ioEvaluator.ts
+    packages/core/src/interpreter/orchestrator/evaluator.ts
+    packages/core/src/interpreter/builtins/sequences.ts
+    packages/core/src/interpreter/builtins/index.ts
+
+  SIN CAMBIOS en el lexer (nunca):
+    lexer.ts, lexerState.ts, lexerContext.ts
+    numberScanner.ts, stringScanner.ts, operatorScanner.ts, commentScanner.ts
+    charUtils.ts
+
+
+## Verification
+
+  Fase 0:
+    1. npm test: los 50 tests existentes siguen pasando (sin regresiones)
+    2. Tokenizar 'Secuencia de Entero' produce [Secuencia, Identificador('de'), Entero]
+    3. Tokenizar 'FDS' produce [FinDeSecuencia]
+    4. El editor resalta Secuencia, Arrancar, Crear, Avanzar, Cerrar, FDS, NFDS
+
+  Fase 1:
+    5. docs/core/sequences.md documenta ambos patrones de Avanzar y la tabla de ErrorCodes
+
+  Fase 2:
+    6. npm test -- sequence.test.ts pasa incluyendo los casos nuevos de Avanzar funcional
+    7. npm test pasa en su totalidad
+
+
+## Fuera de Scope (MVP)
+
+  - Carga desde archivo o stdin en Arrancar()
+  - Secuencias multidimensionales
+  - Optimizaciones de performance (Ring Buffer, Streams)
+  - Secuencias como parametros de subprogramas definidos por el usuario

@@ -19,6 +19,7 @@ export const ErrorCode = {
   RUN_STACK_OVERFLOW: "RUN_004",
   RUN_INVALID_ARGUMENT: "RUN_005",
   RUN_RETURN_OUTSIDE_FN: "RUN_006",
+  RUN_NO_SEQUENCE_DATA: "RUN_007",
 } as const;
 
 export type ErrorCode = typeof ErrorCode[keyof typeof ErrorCode];

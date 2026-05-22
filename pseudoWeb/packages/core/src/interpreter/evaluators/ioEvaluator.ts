@@ -1,8 +1,31 @@
 import type { ReadNode, WriteNode } from '../../parser/ast'
 import { stringifyValue } from '../utils/valueUtils'
 import type { IOEvaluatorContext } from '../types/evaluatorContextContracts'
+import { isSequence, asSequence } from '../types/SequenceValue'
 
 export async function evaluateWriteNode(node: WriteNode, context: IOEvaluatorContext): Promise<void> {
+  if (node.values.length === 0) return
+
+  // Detect sequence write overload: if first evaluated value is a SequenceValue,
+  // treat as sequence write: Escribir(secuencia, valor)
+  const firstVal = await context.evaluateExpression(node.values[0])
+  if (isSequence(firstVal)) {
+    if (node.values.length < 2) {
+      throw new RuntimeError({ code: ErrorCode.RUN_INVALID_ARGUMENT, message: 'Escribir sobre Secuencia requiere un valor a escribir', module: 'interpreter' })
+    }
+    const seq = asSequence(firstVal)
+    if (seq.mode === 'closed') {
+      throw new RuntimeError({ code: ErrorCode.RUN_INVALID_ARGUMENT, message: 'Secuencia cerrada', module: 'interpreter' })
+    }
+    if (seq.mode !== 'write') {
+      throw new RuntimeError({ code: ErrorCode.RUN_INVALID_ARGUMENT, message: 'Secuencia no está en modo escritura', module: 'interpreter' })
+    }
+    const value = await context.evaluateExpression(node.values[1])
+    context.typeChecker.assertValueMatchesType(value, seq.elementType, 'Escribir en Secuencia')
+    seq.elements.push(value)
+    return
+  }
+
   const rendered: string[] = []
   for (const expression of node.values) {
     rendered.push(stringifyValue(await context.evaluateExpression(expression)))
