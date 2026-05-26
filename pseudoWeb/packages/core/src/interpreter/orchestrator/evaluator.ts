@@ -6,6 +6,7 @@ import type {
   ExpressionNode,
   StatementNode,
   VariableDeclarationNode,
+  DataType,
 } from '../../parser/ast'
 import { RuntimeError } from '../../errors'
 import { ErrorCode } from '../../errors.js'
@@ -22,6 +23,8 @@ import { CallableInvoker } from '../callables/callableInvoker'
 import { CallableResolver } from '../callables/callableResolver'
 import { evaluateExpressionNode } from '../evaluators/expressionEvaluator'
 import { isSequencePrimitive, evaluateSequenceProcedure } from '../evaluators/sequences'
+import { createInitialSequence } from '../types/SequenceValue'
+import { analyzeSequences } from '../../analysis/sequenceAnalyzer'
 import { StatementDispatcher } from './statementDispatcher'
 
 export interface EvaluationResult {
@@ -32,6 +35,9 @@ export interface EvaluationResult {
 export type InputRequestHandler = (name: string) => Promise<unknown>
 
 export type OutputHandler = (line: string) => void
+
+export type SequenceInfo = { name: string; elementType?: DataType | null }
+export type LoadedSequenceData = { name: string; elements: unknown[] }
 
 export class Evaluator {
   private environment: Environment
@@ -46,11 +52,18 @@ export class Evaluator {
   private readonly context: EvaluatorContext
   private readonly dispatcher: StatementDispatcher
   private readonly invoker: CallableInvoker
+  private readonly options?: { onSequencesRequired?: (sequences: SequenceInfo[]) => Promise<LoadedSequenceData[]> }
 
-  constructor(environment: Environment, requestInput: InputRequestHandler = async () => null, pushOutput?: OutputHandler) {
+  constructor(
+    environment: Environment,
+    requestInput: InputRequestHandler = async () => null,
+    pushOutput?: OutputHandler,
+    options?: { onSequencesRequired?: (sequences: SequenceInfo[]) => Promise<LoadedSequenceData[]> },
+  ) {
     this.environment = environment
     this.requestInput = requestInput
     this.pushOutput = pushOutput ?? ((line) => this.output.push(line))
+    this.options = options
     this.environmentManager = new EnvironmentManager(environment)
     this.builtinRegistry = initBuiltins()
     this.callableExecutor = new CallableExecutor(
@@ -97,6 +110,40 @@ export class Evaluator {
   public async evaluate(action: ActionNode): Promise<EvaluationResult> {
     this.registry.registerFromEnvironment(action.ambiente)
     this.initializeEnvironmentDeclarations(action.ambiente)
+    // Post-Ambiente: detectar secuencias en modo 'idle' y pausar si es necesario
+    try {
+      const idle = this.collectIdleSequences()
+      // analizar el AST para detectar qué secuencias son iniciadas con Arrancar en el Proceso
+      const astSeqs = analyzeSequences(action.proceso)
+      const startNames = new Set(astSeqs.filter((s) => s.kind === 'start').map((s) => s.name))
+      const toRequest = idle.filter((s) => startNames.has(s.name))
+
+      if (toRequest.length > 0 && this.options?.onSequencesRequired) {
+        const loaded = await this.options.onSequencesRequired(toRequest)
+        if (Array.isArray(loaded)) {
+          for (const item of loaded) {
+            if (!item || typeof item.name !== 'string') continue
+            if (this.environment.has(item.name)) {
+              try {
+                const current = this.environment.lookup(item.name)
+                if (current && typeof current === 'object') {
+                  ;(current as any).elements = Array.isArray(item.elements) ? item.elements : []
+                }
+              } catch {
+                // ignore lookup errors; environment might be different scope
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // If onSequencesRequired throws, forward as runtime error
+      throw new RuntimeError({
+        code: ErrorCode.RUN_INVALID_ARGUMENT,
+        message: (err instanceof Error && err.message) ? `Error en onSequencesRequired: ${err.message}` : 'Error en onSequencesRequired',
+        module: 'interpreter',
+      })
+    }
 
     await this.dispatcher.dispatchBlock(action.proceso)
 
@@ -106,10 +153,31 @@ export class Evaluator {
     }
   }
 
+  private collectIdleSequences(): SequenceInfo[] {
+    const results: SequenceInfo[] = []
+    const snap = this.environment.snapshot()
+    for (const [name, value] of Object.entries(snap)) {
+      if (!value || typeof value !== 'object') continue
+      const v = value as any
+      if (v.kind === 'Secuencia' && Array.isArray(v.elements) && v.mode === 'idle') {
+        results.push({ name, elementType: v.elementType ?? null })
+      }
+    }
+    return results
+  }
+
   private initializeEnvironmentDeclarations(ambiente: EnvironmentBlockNode): void {
     for (const variableDecl of ambiente.variables) {
       for (const variable of variableDecl.variables) {
-        this.environment.define(variable, null, variableDecl.dataType)
+        // If the declared type is a Secuencia, initialize with a SequenceValue in 'idle' mode
+        if (variableDecl.dataType && typeof variableDecl.dataType === 'object' && (variableDecl.dataType as any).kind === 'Secuencia') {
+          const elementType = (variableDecl.dataType as any).elementType
+          const seq = createInitialSequence(elementType)
+          // keep mode 'idle' (createInitialSequence defaults to 'idle')
+          this.environment.define(variable, seq, variableDecl.dataType)
+        } else {
+          this.environment.define(variable, null, variableDecl.dataType)
+        }
       }
     }
 

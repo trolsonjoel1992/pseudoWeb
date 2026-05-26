@@ -55,9 +55,15 @@ export class TypeCoercer {
         break
       case 'Caracter':
         if (typeof inputValue === 'string' && inputValue.length === 1) return inputValue
+        // Permitir que la entrada numérica 0-9 se tome como caracter (por ejemplo: usuario ingresa 5)
+        if (typeof inputValue === 'number' && Number.isInteger(inputValue) && inputValue >= 0 && inputValue <= 9)
+          return String(inputValue)
         break
       case 'Alfanumerico':
         if (typeof inputValue === 'string') return inputValue
+        // Si el usuario ingresa un número en una variable Alfanumerico,
+        // aceptarlo convirtiéndolo a cadena.
+        if (typeof inputValue === 'number' && Number.isFinite(inputValue)) return String(inputValue)
         break
       case 'Logico':
         if (typeof inputValue === 'boolean') return inputValue

@@ -2,7 +2,7 @@ import type { BinaryExpressionNode, BinaryOperator, ExpressionNode, UnaryOperato
 import { TokenType } from '../../lexer/types'
 import type { Token } from '../../lexer/types'
 import type { ParserContext } from '../state'
-import { ERR_EXPECTED_CLOSE_PAREN_AFTER_ARGS, ERR_EXPECTED_CLOSE_PAREN_AFTER_EXPR, ERR_EXPECTED_EXPRESSION, ERR_UNSUPPORTED_BINARY_OPERATOR, ERR_UNSUPPORTED_UNARY_OPERATOR } from '../constants'
+import { ERR_EXPECTED_OPEN_PAREN_AFTER_FUNCTION, ERR_EXPECTED_CLOSE_PAREN_AFTER_ARGS, ERR_EXPECTED_CLOSE_PAREN_AFTER_EXPR, ERR_EXPECTED_EXPRESSION, ERR_UNSUPPORTED_BINARY_OPERATOR, ERR_UNSUPPORTED_UNARY_OPERATOR } from '../constants'
 import { parserError } from '../utils/tokens'
 
 export function parseExpression(state: ParserContext): ExpressionNode {
@@ -145,6 +145,31 @@ function parsePrimary(state: ParserContext): ExpressionNode {
     }
 
     return { type: 'Identifier', name: identifier.lexeme, line: identifier.line, column: identifier.column }
+  }
+
+  // Allow certain keyword tokens that represent builtins to be used as
+  // function-call style expressions, e.g. `NoFinDeSecuencia(x)` inside
+  // a condition.
+  if (state.match(TokenType.FinDeSecuencia) || state.match(TokenType.NoFinDeSecuencia)) {
+    const nameToken = state.previous()
+    if (state.match(TokenType.ParentesisIzquierdo)) {
+      const args: ExpressionNode[] = []
+      if (!state.match(TokenType.ParentesisDerecho)) {
+        do {
+          args.push(parseExpression(state))
+        } while (state.match(TokenType.Coma))
+        state.consume(TokenType.ParentesisDerecho, ERR_EXPECTED_CLOSE_PAREN_AFTER_ARGS)
+      }
+
+      return {
+        type: 'FunctionCall',
+        name: nameToken.lexeme || String(nameToken.type),
+        arguments: args,
+        line: nameToken.line,
+        column: nameToken.column,
+      }
+    }
+    throw state.parserError(ERR_EXPECTED_OPEN_PAREN_AFTER_FUNCTION)
   }
 
   if (state.match(TokenType.ParentesisIzquierdo)) {

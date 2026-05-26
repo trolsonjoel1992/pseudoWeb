@@ -2,7 +2,7 @@ import type { BinaryExpressionNode, ExpressionNode, FunctionCallNode, UnaryExpre
 import { RuntimeError } from '../../errors'
 import { ErrorCode } from '../../errors.js'
 import { buildMessage } from '../../constants/errorMessages.js'
-import { assertDefinedValue, isTruthy, toComparable } from '../utils/valueUtils'
+import { assertDefinedValue, isTruthy } from '../utils/valueUtils'
 import { ERROR_MESSAGES } from '../constants/errorMessages'
 import type { ExpressionEvaluatorContext } from '../types/evaluatorContextContracts'
 
@@ -103,14 +103,54 @@ async function evaluateBinaryExpression(node: BinaryExpressionNode, context: Exp
       return left === right
     case 'Distinto':
       return left !== right
-    case 'Menor':
-      return toComparable(left) < toComparable(right)
-    case 'MenorIgual':
-      return toComparable(left) <= toComparable(right)
-    case 'Mayor':
-      return toComparable(left) > toComparable(right)
-    case 'MayorIgual':
-      return toComparable(left) >= toComparable(right)
+    case 'Menor': {
+      const lt = typeof left
+      const rt = typeof right
+      if (lt === 'number' && rt === 'number') return (left as number) < (right as number)
+      if (lt === 'string' && rt === 'string') return (left as string) < (right as string)
+      throw new RuntimeError({
+        code: ErrorCode.RUN_TYPE_MISMATCH,
+        message: `Comparación inválida entre tipos diferentes: ${lt} y ${rt}`,
+        module: 'interpreter',
+        context: { left, right },
+      })
+    }
+    case 'MenorIgual': {
+      const lt = typeof left
+      const rt = typeof right
+      if (lt === 'number' && rt === 'number') return (left as number) <= (right as number)
+      if (lt === 'string' && rt === 'string') return (left as string) <= (right as string)
+      throw new RuntimeError({
+        code: ErrorCode.RUN_TYPE_MISMATCH,
+        message: `Comparación inválida entre tipos diferentes: ${lt} y ${rt}`,
+        module: 'interpreter',
+        context: { left, right },
+      })
+    }
+    case 'Mayor': {
+      const lt = typeof left
+      const rt = typeof right
+      if (lt === 'number' && rt === 'number') return (left as number) > (right as number)
+      if (lt === 'string' && rt === 'string') return (left as string) > (right as string)
+      throw new RuntimeError({
+        code: ErrorCode.RUN_TYPE_MISMATCH,
+        message: `Comparación inválida entre tipos diferentes: ${lt} y ${rt}`,
+        module: 'interpreter',
+        context: { left, right },
+      })
+    }
+    case 'MayorIgual': {
+      const lt = typeof left
+      const rt = typeof right
+      if (lt === 'number' && rt === 'number') return (left as number) >= (right as number)
+      if (lt === 'string' && rt === 'string') return (left as string) >= (right as string)
+      throw new RuntimeError({
+        code: ErrorCode.RUN_TYPE_MISMATCH,
+        message: `Comparación inválida entre tipos diferentes: ${lt} y ${rt}`,
+        module: 'interpreter',
+        context: { left, right },
+      })
+    }
     case 'Y':
       return isTruthy(left) && isTruthy(right)
     case 'O':
