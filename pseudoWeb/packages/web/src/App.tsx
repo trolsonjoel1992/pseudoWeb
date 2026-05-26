@@ -3,7 +3,20 @@ import { useInterpreter } from './hooks/useInterpreter'
 import { CodeEditor } from './components/CodeEditor'
 import { ConsolePanel } from './components/ConsolePanel'
 import { SideNavBar } from './components/SideNavBar'
+import SequenceLoaderUI from './components/SequenceLoaderUI'
 import type { DashboardMenu } from './types/ui'
+
+const CODE_STORAGE_KEY = 'pseudoweb.editor.code'
+
+const readStoredCode = (): string => {
+  if (typeof window === 'undefined') return ''
+
+  try {
+    return window.localStorage.getItem(CODE_STORAGE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
 
 function App() {
   const [activeMenu, setActiveMenu] = useState<DashboardMenu>('codigo')
@@ -11,9 +24,17 @@ function App() {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
   const [isConsoleCleared, setIsConsoleCleared] = useState(false)
   const [consoleInput, setConsoleInput] = useState('')
-  const [code, setCode] = useState('')
+  const [code, setCode] = useState(() => readStoredCode())
   const [fontSize, setFontSize] = useState(15)
-  const { execute, submitInput, inputRequest, outputLines, result, isExecuting, sequenceOutputs } = useInterpreter()
+  const { execute, submitInput, inputRequest, outputLines, result, isExecuting, sequenceOutputs, sequencesRequest, submitSequences } = useInterpreter()
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CODE_STORAGE_KEY, code)
+    } catch {
+      // Ignorar errores de almacenamiento: el editor sigue funcionando sin persistencia.
+    }
+  }, [code])
 
   const handleExecute = () => {
     setIsConsoleCleared(false)
@@ -180,6 +201,14 @@ function App() {
                 isAwaitingInput={Boolean(inputRequest)}
                 onClearConsole={handleClearConsole}
                 onRestart={handleExecute}
+              />
+            )}
+            {sequencesRequest && submitSequences && (
+              <SequenceLoaderUI
+                sequences={sequencesRequest}
+                onAllLoaded={(data) => {
+                  submitSequences(data)
+                }}
               />
             )}
           </div>

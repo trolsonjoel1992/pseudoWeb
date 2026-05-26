@@ -12,6 +12,8 @@ export function useInterpreter() {
   const [outputLines, setOutputLines] = useState<string[]>([])
   type SequenceInfo = { elements: unknown[]; elementType?: string | null }
   const [sequenceOutputs, setSequenceOutputs] = useState<Record<string, SequenceInfo>>({})
+  const [sequencesRequest, setSequencesRequest] = useState<null | Array<{ name: string; elementType?: unknown }>>(null)
+  const sequencesResolverRef = useRef<((data: { name: string; elements: unknown[] }[]) => void) | null>(null)
   const [inputRequest, setInputRequest] = useState<InputRequestState | null>(null)
   const inputResolverRef = useRef<((value: unknown) => void) | null>(null)
 
@@ -79,6 +81,15 @@ export function useInterpreter() {
         (line) => {
           setOutputLines((currentLines) => [...currentLines, line])
         },
+        {
+          onSequencesRequired: async (sequences) => {
+            // mostrar UI en la app y esperar a que el usuario cargue archivos
+            return await new Promise((resolve) => {
+              setSequencesRequest(sequences.map((s) => ({ name: s.name, elementType: (s as any).elementType ?? null })))
+              sequencesResolverRef.current = resolve
+            })
+          },
+        },
       )
       const execution = await evaluator.evaluate(statements)
 
@@ -92,6 +103,9 @@ export function useInterpreter() {
       }
 
       setSequenceOutputs(seqs)
+
+      // limpiar cualquier solicitud pendiente
+      setSequencesRequest(null)
 
       setResult({
         success: true,
@@ -132,5 +146,13 @@ export function useInterpreter() {
     sequenceOutputs,
     result,
     isExecuting,
+    sequencesRequest,
+    submitSequences: (data: { name: string; elements: unknown[] }[]) => {
+      if (sequencesResolverRef.current) {
+        sequencesResolverRef.current(data)
+        sequencesResolverRef.current = null
+      }
+      setSequencesRequest(null)
+    },
   }
 }
