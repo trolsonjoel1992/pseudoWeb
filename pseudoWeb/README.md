@@ -17,7 +17,6 @@ pseudoWeb/
 │   ├── core/      # Motor del lenguaje (Lexer, Parser, Interpreter, tests)
 │   └── web/       # Aplicación React (editor, UI)
 ├── docs/          # Documentación y ejemplos (ej. docs/core/sequences.md)
-├── firebase.json
 └── README.md      # Este archivo
 ```
 
